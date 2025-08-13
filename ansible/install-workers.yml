@@ -1,0 +1,198 @@
+---
+- name: Configure Alma Linux Worker Nodes
+  hosts: all
+  become: yes
+  vars:
+    master_ip: "{{ master_private_ip }}"
+    k3s_version: "v1.27.5+k3s1"
+
+  tasks:
+    - name: Ensure required directories exist
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.antigen"
+        state: directory
+        mode: '0755'
+
+    - name: Install required packages
+      ansible.builtin.yum:
+        name:
+          - git
+          - curl
+          - zsh
+          - util-linux
+          - openssh-server
+        state: present
+
+    - name: Ensure .ssh directory exists
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: '0700'
+
+    - name: Copy private SSH key to server
+      ansible.builtin.copy:
+        src: keys/k3s_cluster_key
+        dest: ~/.ssh/id_rsa
+        mode: '0600'
+
+    - name: Copy public SSH key to server
+      ansible.builtin.copy:
+        src: keys/k3s_cluster_key.pub
+        dest: ~/.ssh/id_rsa.pub
+        mode: '0644'
+
+    - name: Add public key to authorized_keys
+      ansible.builtin.authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', 'keys/k3s_cluster_key.pub') }}"
+
+    - name: Disable StrictHostKeyChecking for easier SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/ssh_config
+        line: "    StrictHostKeyChecking no"
+        insertafter: "^Host \\*"
+        state: present
+
+    - name: Download and install Antigen
+      ansible.builtin.get_url:
+        url: https://git.io/antigen
+        dest: "{{ ansible_env.HOME }}/.antigen/antigen.zsh"
+        mode: '0644'
+
+    - name: Set default shell to Zsh for the user
+      ansible.builtin.shell:
+        cmd: chsh -s /bin/zsh {{ ansible_user }}
+      args:
+        executable: /bin/bash
+      when: ansible_user != 'root'
+
+    - name: Configure .zshrc using Jinja2 template
+      ansible.builtin.template:
+        src: templates/zshrc.j2
+        dest: "{{ ansible_env.HOME }}/.zshrc"
+        mode: '0644'
+
+    - name: Set default shell to Zsh for the user
+      ansible.builtin.user:
+        name: "{{ ansible_user | default('root') }}"
+        shell: /bin/zsh
+      become: true
+
+    - name: Confirm shell is zsh
+      command: "getent passwd {{ ansible_user | default('root') }}"
+      register: shell_check
+
+    - debug:
+        msg: "{{ shell_check.stdout }}"
+
+    - name: Install required packages for K3s worker
+      ansible.builtin.yum:
+        name:
+          - iptables
+          - nfs-utils
+        state: present
+
+    - name: Create directory for K3s
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: directory
+        mode: '0755'
+
+    - name: Create directory for token file
+      ansible.builtin.file:
+        path: /tmp
+        state: directory
+        mode: '0755'
+
+    - name: Wait for K3s token to be present on master node
+      ansible.builtin.shell: |
+        while ! ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@{{ master_public_ip }} 'test -f /tmp/k3s_node_token'; do
+          echo "Waiting for /tmp/k3s_node_token to be available on master..."
+          sleep 5
+        done
+      delegate_to: localhost
+      become: false
+
+    - name: Copy K3s token from master node
+      ansible.builtin.shell: |
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@{{ master_public_ip }}:/tmp/k3s_node_token /tmp/k3s_node_token
+      delegate_to: localhost
+      become: false
+      register: token_copy
+      changed_when: false
+      ignore_errors: true
+
+    - name: Check if token file exists
+      ansible.builtin.stat:
+        path: /tmp/k3s_node_token
+      register: token_file
+
+    - name: Read K3s token from copied file
+      ansible.builtin.slurp:
+        src: /tmp/k3s_node_token
+      register: node_token_b64
+      when: token_file.stat.exists
+
+    - name: Set token variable from file
+      ansible.builtin.set_fact:
+        node_token: "{{ node_token_b64['content'] | b64decode | trim }}"
+      when: token_file.stat.exists and node_token_b64 is defined
+
+    - name: Get token directly from master via SSH
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@{{ master_public_ip }} "cat /tmp/k3s_node_token"
+      register: ssh_token_output
+      changed_when: false
+      ignore_errors: true
+      when: not token_file.stat.exists or node_token is not defined
+      delegate_to: localhost
+      become: false
+
+    - name: Set token variable from SSH
+      ansible.builtin.set_fact:
+        node_token: "{{ ssh_token_output.stdout | trim }}"
+      when: (ssh_token_output | default({})).rc | default(1) == 0
+
+    - name: Verify token is defined
+      ansible.builtin.debug:
+        msg: "Token status: {{ 'Available' if node_token is defined and node_token|length > 0 else 'Not available' }}"
+
+    - name: Fail if token is not available
+      ansible.builtin.fail:
+        msg: "K3s token could not be retrieved from master node"
+      when: node_token is not defined or node_token|length == 0
+
+    - name: Configure k3s worker
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=https://{{ master_ip }}:6443 K3S_TOKEN={{ node_token }} sh -
+      when: node_token is defined
+      args:
+        executable: /bin/bash
+      register: k3s_install
+      changed_when: "'Installing K3s agent' in k3s_install.stdout"
+
+    - name: Debug k3s installation output
+      ansible.builtin.debug:
+        msg: "K3s installation output: {{ k3s_install.stdout }}"
+
+    - name: Wait for K3s worker to be ready
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Check K3s worker status
+      ansible.builtin.shell: |
+        systemctl status k3s-agent
+      register: k3s_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show K3s worker status
+      ansible.builtin.debug:
+        msg: "K3s worker status: {{ k3s_status.stdout }}"
+
+    - name: Verify K3s worker is running
+      ansible.builtin.assert:
+        that: "'Active: active (running)' in k3s_status.stdout"
+        fail_msg: "K3s worker is not running properly"
+        success_msg: "K3s worker is running successfully"

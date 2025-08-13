@@ -1,0 +1,16 @@
+apiVersion: v2
+name: k3s-test-app
+description: A Helm chart for testing K3s cluster functionality with Ingress, Deployment and Services
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - k3s
+  - test
+  - nginx
+  - ingress
+home: https://github.com/rpanev/proxmox-k8s
+sources:
+  - https://github.com/rpanev/proxmox-k8s
+maintainers:
+  - name: R Panev

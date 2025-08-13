@@ -1,0 +1,33 @@
+source ~/.antigen/antigen.zsh
+# Load the oh-my-zsh's library.
+antigen use oh-my-zsh
+
+# Load the theme
+antigen theme gianu
+
+# Bundles from the default repo (robbyrussell's oh-my-zsh).
+antigen bundle ssh-agent
+antigen bundle history
+antigen bundle git
+antigen bundle heroku
+antigen bundle pip
+antigen bundle lein
+antigen bundle command-not-found
+antigen bundle common-aliases
+antigen bundle compleat
+antigen bundle git-extras
+antigen bundle git-flow
+antigen bundle web-search
+antigen bundle zsh-users/zsh-history-substring-search ./zsh-history-substring-search.zsh
+antigen bundle zsh-users/zsh-autosuggestions
+antigen bundle colored-man-pages
+antigen bundle chrissicool/zsh-256color
+
+# Syntax highlighting bundle.
+antigen bundle zsh-users/zsh-syntax-highlighting
+
+# Aliases
+alias ll='ls -lah'
+
+# Tell Antigen that you're done.
+antigen apply

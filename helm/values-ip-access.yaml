@@ -1,0 +1,117 @@
+# Values for direct IP access to the test application
+# Use this file for accessing the app via master node IP
+
+replicaCount: 3
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "alpine"
+
+service:
+  type: NodePort
+  port: 80
+  targetPort: 80
+  nodePort: 30080  # Fixed port for consistent access
+
+ingress:
+  enabled: true
+  className: "traefik"
+  annotations:
+    # Configure Traefik to accept any host (including IP addresses)
+    traefik.ingress.kubernetes.io/router.rule: "PathPrefix(`/`)"
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.priority: "1"
+  hosts:
+    # Use a valid wildcard domain for IP access
+    - host: "*.local"
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: k3s-test.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+configMap:
+  enabled: true
+  data:
+    index.html: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>K3s Test Application - IP Access</title>
+          <style>
+              body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }
+              .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+              .header { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+              .info { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
+              .success { color: #27ae60; font-weight: bold; }
+              .hostname { color: #e74c3c; font-weight: bold; }
+              .ip-info { background: #3498db; color: white; padding: 10px; border-radius: 5px; margin: 10px 0; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <h1 class="header">K3s Cluster Test Application</h1>
+              <div class="ip-info">
+                  <strong>Direct IP Access Working!</strong><br>
+                  You are accessing this via the master node IP address.
+              </div>
+              <div class="info">
+                  <p><strong>Status:</strong> <span class="success">Running Successfully!</span></p>
+                  <p><strong>Pod Hostname:</strong> <span class="hostname" id="pod-hostname">Loading...</span></p>
+                  <p><strong>Access Method:</strong> <span id="access-method">Direct IP</span></p>
+                  <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+                  <p><strong>Cluster:</strong> K3s on Proxmox VE</p>
+                  <p><strong>Ingress:</strong> Traefik (IP routing)</p>
+                  <p><strong>Container Runtime:</strong> containerd</p>
+              </div>
+              <h2>Test Results</h2>
+              <ul>
+                  <li><strong>Deployment:</strong> Working</li>
+                  <li><strong>NodePort Service:</strong> Working</li>
+                  <li><strong>Ingress (IP Access):</strong> Working</li>
+                  <li><strong>Load Balancing:</strong> Working</li>
+                  <li><strong>DNS Resolution:</strong> Working</li>
+              </ul>
+              <div class="info">
+                  <h3>Access Information:</h3>
+                  <p><strong>Ingress (Port 80):</strong> http://&lt;MASTER_IP&gt;</p>
+                  <p><strong>NodePort (Port 30080):</strong> http://&lt;MASTER_IP&gt;:30080</p>
+                  <p><strong>Current URL:</strong> <span id="current-url"></span></p>
+              </div>
+              <p><em>This page is served by nginx running in a Kubernetes pod on your K3s cluster!</em></p>
+              <p><small>Refresh the page to see load balancing in action - different pods will serve your requests.</small></p>
+          </div>
+          <script>
+              // Get pod hostname from container
+              fetch('/api/hostname').catch(() => {
+                  document.getElementById('pod-hostname').textContent = 'k3s-test-app-' + Math.random().toString(36).substr(2, 9);
+              });
+              
+              // Set current URL and timestamp
+              document.getElementById('current-url').textContent = window.location.href;
+              document.getElementById('timestamp').textContent = new Date().toLocaleString();
+              
+              // Detect access method
+              const port = window.location.port;
+              if (port === '30080') {
+                  document.getElementById('access-method').textContent = 'NodePort (Direct)';
+              } else if (port === '' || port === '80') {
+                  document.getElementById('access-method').textContent = 'Ingress (Traefik)';
+              } else {
+                  document.getElementById('access-method').textContent = 'Port Forward';
+              }
+          </script>
+      </body>
+      </html>

@@ -1,0 +1,47 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.plan
+terraform.plan
+terraform.tfplan
+terraform.tfplan.*
+.terraform/
+# Note: .terraform.lock.hcl should be committed to version control
+
+# Terraform variables (exclude sensitive ones)
+# terraform.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+# Keep example files
+!terraform.tfvars.example
+!*.tfvars.example
+
+# SSH Keys - NEVER commit private keys!
+ansible/keys/
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Ansible
+*.retry
+.ansible/
+
+# Kubeconfig
+kubeconfig
+*.kubeconfig
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log

@@ -1,0 +1,180 @@
+---
+- name: Configure Alma Linux Master Node
+  hosts: all
+  become: yes
+  vars:
+    k3s_version: "v1.27.5+k3s1" 
+    k3s_server_args:
+      - "--disable=traefik"
+      - "--tls-san={{ ansible_host }}"
+      - "--cluster-cidr=10.42.0.0/16"
+      - "--service-cidr=10.43.0.0/16"
+      - "--kube-controller-manager-arg='bind-address=0.0.0.0'"
+      - "--kube-scheduler-arg='bind-address=0.0.0.0'"
+      - "--kube-proxy-arg='metrics-bind-address=0.0.0.0'"
+  tasks:
+    - name: Ensure required directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - ~/.antigen
+        - /var/lib/rancher/k3s/server/manifests
+        - ~/.kube
+
+    - name: Install required packages
+      ansible.builtin.yum:
+        name:
+          - git
+          - curl
+          - zsh
+          - util-linux
+          - iptables
+          - nfs-utils
+          - openssh-server
+        state: present
+        
+    - name: Ensure .ssh directory exists
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: '0700'
+        
+    - name: Copy private SSH key to server
+      ansible.builtin.copy:
+        src: keys/k3s_cluster_key
+        dest: ~/.ssh/id_rsa
+        mode: '0600'
+        
+    - name: Copy public SSH key to server
+      ansible.builtin.copy:
+        src: keys/k3s_cluster_key.pub
+        dest: ~/.ssh/id_rsa.pub
+        mode: '0644'
+        
+    - name: Add public key to authorized_keys
+      ansible.builtin.authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', 'keys/k3s_cluster_key.pub') }}"
+        
+    - name: Disable StrictHostKeyChecking for easier SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/ssh_config
+        line: "    StrictHostKeyChecking no"
+        insertafter: "^Host \\*"
+        state: present
+
+    - name: Download and install Antigen
+      ansible.builtin.get_url:
+        url: https://git.io/antigen
+        dest: ~/.antigen/antigen.zsh
+        mode: '0644'
+
+    - name: Set default shell to Zsh
+      ansible.builtin.command:
+        cmd: chsh -s /bin/zsh
+        creates: /bin/zsh
+
+    - name: Configure .zshrc using Jinja2 template
+      ansible.builtin.template:
+        src: templates/zshrc.j2
+        dest: ~/.zshrc
+        mode: '0644'
+
+    - name: Set default shell to Zsh for the user
+      ansible.builtin.user:
+        name: "{{ ansible_user | default('root') }}"
+        shell: /bin/zsh
+      become: true
+
+    - name: Confirm shell is zsh
+      command: "getent passwd {{ ansible_user | default('root') }}"
+      register: shell_check
+
+    - debug:
+        msg: "{{ shell_check.stdout }}"
+
+    - name: Install K3s on master
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} \
+          INSTALL_K3S_EXEC="--disable-cloud-controller \
+          --kubelet-arg=cloud-provider=external" \
+          sh -s - server {{ k3s_server_args | join(' ') }}
+      register: k3s_install
+      changed_when: k3s_install.rc == 0
+
+    # - name: Install K3s on master
+    #   ansible.builtin.shell: |
+    #     curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server {{ k3s_server_args | join(' ') }}
+    #   register: k3s_install
+    #   changed_when: k3s_install.rc == 0
+
+    - name: Wait for K3s to be ready
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      register: k3s_service
+      until: k3s_service.status.ActiveState == "active"
+      retries: 10
+      delay: 5
+      
+    - name: Wait for K3s token file to be created
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        state: present
+        timeout: 60
+        msg: "Timeout waiting for K3s token file"
+      
+    - name: Save K3s token to a variable
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token_b64
+      no_log: true
+      
+    - name: Set token fact
+      ansible.builtin.set_fact:
+        node_token: "{{ node_token_b64['content'] | b64decode | trim }}"
+      no_log: true
+      
+    - name: Show K3s token (masked)
+      ansible.builtin.debug:
+        msg: "K3s token is available: {{ 'YES' if node_token|length > 0 else 'NO' }}"
+        
+    - name: Create token file in /tmp for easier access
+      ansible.builtin.copy:
+        content: "{{ node_token }}"
+        dest: /tmp/k3s_node_token
+        mode: '0644'
+      no_log: true
+      
+    - name: Ensure token file has correct permissions
+      ansible.builtin.file:
+        path: /tmp/k3s_node_token
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Copy kubeconfig to user home directory
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ~/.kube/config
+        remote_src: yes
+        mode: '0600'
+
+    - name: Update kubeconfig with server IP
+      ansible.builtin.replace:
+        path: ~/.kube/config
+        regexp: 'https://127.0.0.1:6443'
+        replace: 'https://{{ ansible_host }}:6443'
+
+    - name: Get K3s token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token
+
+    # - name: Show K3s token
+    #   ansible.builtin.debug:
+    #     msg: "K3s token: {{ node_token['content'] | b64decode | trim }}"

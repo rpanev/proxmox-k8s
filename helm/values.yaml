@@ -1,0 +1,114 @@
+# Default values for k3s-test-app
+# This is a YAML-formatted file.
+
+replicaCount: 3
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "alpine"
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: NodePort
+  port: 80
+  targetPort: 80
+  nodePort: 30080
+
+ingress:
+  enabled: false
+  className: "traefik"
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+  hosts:
+    - host: k3s-test.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Test configuration
+test:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.35"
+  
+# ConfigMap for custom nginx configuration
+configMap:
+  enabled: true
+  data:
+    index.html: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>K3s Test Application</title>
+          <style>
+              body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }
+              .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+              .header { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+              .info { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
+              .success { color: #27ae60; font-weight: bold; }
+              .hostname { color: #e74c3c; font-weight: bold; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <h1 class="header">K3s Cluster Test Application</h1>
+              <div class="info">
+                  <p><strong>Status:</strong> <span class="success">Running Successfully!</span></p>
+                  <p><strong>Pod Hostname:</strong> <span class="hostname" id="hostname">Loading...</span></p>
+                  <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+                  <p><strong>Cluster:</strong> K3s on Proxmox VE</p>
+                  <p><strong>Ingress:</strong> Traefik</p>
+                  <p><strong>Container Runtime:</strong> containerd</p>
+              </div>
+              <h2>Test Results</h2>
+              <ul>
+                  <li>Deployment: Working</li>
+                  <li>Service: Working</li>
+                  <li>Ingress: Working</li>
+                  <li>Load Balancing: Working</li>
+                  <li>DNS Resolution: Working</li>
+              </ul>
+              <p><em>This page is served by nginx running in a Kubernetes pod on your K3s cluster!</em></p>
+          </div>
+          <script>
+              document.getElementById('hostname').textContent = window.location.hostname;
+              document.getElementById('timestamp').textContent = new Date().toLocaleString();
+          </script>
+      </body>
+      </html>

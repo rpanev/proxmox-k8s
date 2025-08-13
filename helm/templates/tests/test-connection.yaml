@@ -1,0 +1,31 @@
+{{- if .Values.test.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "k3s-test-app.fullname" . }}-test"
+  labels:
+    {{- include "k3s-test-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: wget
+      image: "{{ .Values.test.image.repository }}:{{ .Values.test.image.tag }}"
+      command: ['wget']
+      args: ['{{ include "k3s-test-app.fullname" . }}:{{ .Values.service.port }}']
+    - name: curl-test
+      image: "{{ .Values.test.image.repository }}:{{ .Values.test.image.tag }}"
+      command: ['/bin/sh']
+      args:
+        - -c
+        - |
+          echo "Testing service connectivity..."
+          wget -qO- {{ include "k3s-test-app.fullname" . }}:{{ .Values.service.port }} | grep -q "K3s Cluster Test Application"
+          if [ $? -eq 0 ]; then
+            echo "Service test PASSED"
+          else
+            echo "Service test FAILED"
+            exit 1
+          fi
+{{- end }}
