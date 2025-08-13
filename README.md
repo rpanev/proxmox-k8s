@@ -483,12 +483,13 @@ terraform {
 }
 ```
 
+
 ### High Availability // TODO
 
-Scale the master nodes for HA:
+Scale the master nodes for HA: 
 
 ```hcl
-# In terraform.tfvars
+# In terraform.tfvars // TODO
 master_count = 3
 ```
 
