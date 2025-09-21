@@ -1,0 +1,222 @@
+---
+- name: Configure Nginx Load Balancer for K3s HA Cluster
+  hosts: nginx_lb
+  become: yes
+  tasks:
+    - name: Ensure required directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - ~/.antigen
+        - /etc/nginx
+        - ~/.kube
+
+    - name: Immediately disable SELinux with setenforce 0
+      ansible.builtin.command:
+        cmd: setenforce 0
+      register: setenforce_result
+      changed_when: setenforce_result.rc == 0
+      failed_when: false
+      
+    - name: Permanently disable SELinux
+      ansible.builtin.selinux:
+        state: disabled
+      register: selinux_disabled
+
+    - name: Reboot if SELinux configuration was changed and setenforce failed
+      ansible.builtin.reboot:
+      when: selinux_disabled.changed and setenforce_result.rc != 0
+    
+    # SELinux rules for port 6443
+    # - name: Install policycoreutils-python-utils for semanage
+    #   ansible.builtin.yum:
+    #     name: policycoreutils-python-utils
+    #     state: present
+
+    # - name: Check if port 6443 is already allowed in SELinux
+    #   ansible.builtin.shell: semanage port -l | grep http_port_t | grep 6443
+    #   register: selinux_port_check
+    #   changed_when: false
+    #   failed_when: false
+    #   
+    # - name: Configure SELinux to allow Nginx to bind to port 6443
+    #   ansible.builtin.command:
+    #     cmd: semanage port -a -t http_port_t -p tcp 6443
+    #   register: semanage_add_result
+    #   changed_when: semanage_add_result.rc == 0
+    #   failed_when: false
+    #   when: selinux_port_check.rc != 0
+    #   
+    # - name: Modify SELinux port if it already exists
+    #   ansible.builtin.command:
+    #     cmd: semanage port -m -t http_port_t -p tcp 6443
+    #   register: semanage_modify_result
+    #   changed_when: semanage_modify_result.rc == 0
+    #   failed_when: false
+    #   when: selinux_port_check.rc == 0 and semanage_add_result is defined and semanage_add_result.rc != 0
+    #   
+    # - name: Verify SELinux port configuration
+    #   ansible.builtin.shell: semanage port -l | grep http_port_t
+    #   register: selinux_verify
+    #   changed_when: false
+    #   
+    # - name: Show SELinux port configuration
+    #   ansible.builtin.debug:
+    #     var: selinux_verify.stdout_lines
+
+    - name: Install prerequisites for Nginx repository
+      ansible.builtin.yum:
+        name:
+          - git
+          - curl
+          - zsh
+          - util-linux
+          - openssh-server
+          - ca-certificates
+          - nano
+          - vim
+        state: present
+
+    - name: Add official Nginx repository
+      ansible.builtin.copy:
+        content: |
+          [nginx-stable]
+          name=nginx stable repo
+          baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+          gpgcheck=1
+          enabled=1
+          gpgkey=https://nginx.org/keys/nginx_signing.key
+          module_hotfixes=true
+        dest: /etc/yum.repos.d/nginx.repo
+        mode: '0644'
+
+    - name: Install Nginx from official repository
+      ansible.builtin.yum:
+        name:
+          # - nginx-1.24*
+          - nginx
+        state: present
+        
+    - name: Ensure .ssh directory exists
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: '0700'
+        
+    - name: Copy private SSH key to server
+      ansible.builtin.copy:
+        src: keys/k3s_cluster_key
+        dest: ~/.ssh/id_rsa
+        mode: '0600'
+        
+    - name: Copy public SSH key to server
+      ansible.builtin.copy:
+        src: keys/k3s_cluster_key.pub
+        dest: ~/.ssh/id_rsa.pub
+        mode: '0644'
+        
+    - name: Add public key to authorized_keys
+      ansible.builtin.authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', 'keys/k3s_cluster_key.pub') }}"
+        
+    - name: Disable StrictHostKeyChecking for easier SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/ssh_config
+        line: "    StrictHostKeyChecking no"
+        insertafter: "^Host \\*"
+        state: present
+
+    - name: Download and install Antigen
+      ansible.builtin.get_url:
+        url: https://git.io/antigen
+        dest: ~/.antigen/antigen.zsh
+        mode: '0644'
+
+    - name: Set default shell to Zsh
+      ansible.builtin.command:
+        cmd: chsh -s /bin/zsh
+        creates: /bin/zsh
+
+    - name: Configure .zshrc using Jinja2 template
+      ansible.builtin.template:
+        src: templates/zshrc.j2
+        dest: ~/.zshrc
+        mode: '0644'
+
+    - name: Set default shell to Zsh for the user
+      ansible.builtin.user:
+        name: "{{ ansible_user | default('root') }}"
+        shell: /bin/zsh
+      become: true
+
+    - name: Create required Nginx directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - /etc/nginx/conf.d
+        - /etc/nginx/stream.d
+        - /var/log/nginx
+        
+    - name: Create Nginx configuration for K3s API server
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: '0644'
+        
+    - name: Create stream configuration file
+      ansible.builtin.template:
+        src: templates/stream.conf.j2
+        dest: /etc/nginx/stream.d/k3s-api.conf
+        mode: '0644'
+
+    - name: Test Nginx configuration
+      ansible.builtin.command:
+        cmd: nginx -t
+      register: nginx_test
+      changed_when: false
+      ignore_errors: true
+      
+    - name: Show Nginx test results if failed
+      ansible.builtin.debug:
+        var: nginx_test.stderr_lines
+      when: nginx_test.rc != 0
+
+    - name: Enable and start Nginx service
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: yes
+      when: nginx_test.rc == 0
+      
+    # - name: Restart Nginx service after SELinux configuration
+    #   ansible.builtin.systemd:
+    #     name: nginx
+    #     state: restarted
+    #   when: semanage_add_result is defined and semanage_add_result.changed or semanage_modify_result is defined and semanage_modify_result.changed
+
+    # - name: Open firewall port for K3s API (6443)
+    #   ansible.builtin.command:
+    #     cmd: firewall-cmd --permanent --add-port=6443/tcp
+    #   register: firewall_cmd
+    #   changed_when: firewall_cmd.rc == 0
+    #   failed_when: false
+
+    # - name: Reload firewall
+    #   ansible.builtin.command:
+    #     cmd: firewall-cmd --reload
+    #   register: firewall_reload
+    #   changed_when: firewall_reload.rc == 0
+    #   failed_when: false
+
+    - name: Verify Nginx is running
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+      register: nginx_status
+      changed_when: false

@@ -1,0 +1,27 @@
+# Ansible inventory for K3s cluster
+# Generated on Sat Sep 20 07:26:28 PM UTC 2025
+
+[nginx_lb]
+k8s-nginx-lb ansible_host=192.168.99.220 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+[master]
+k8s-master-1 ansible_host=192.168.99.230 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+k8s-master-2 ansible_host=192.168.99.231 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+k8s-master-3 ansible_host=192.168.99.232 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+[first_master]
+k8s-master-1 ansible_host=192.168.99.230 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+[additional_masters]
+k8s-master-2 ansible_host=192.168.99.231 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+k8s-master-3 ansible_host=192.168.99.232 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+[worker]
+k8s-node1 ansible_host=192.168.99.240 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+k8s-node2 ansible_host=192.168.99.241 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+k8s-node3 ansible_host=192.168.99.242 ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+[all:vars]
+ansible_python_interpreter=auto_silent
+master_private_ip=192.168.99.230
+loadbalancer_ip=192.168.99.220

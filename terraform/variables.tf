@@ -4,17 +4,17 @@ variable "pm_api_url" {
   description = "Proxmox API URL"
 }
 
-variable "pm_user" {
-  type        = string
-  description = "Proxmox username"
-  default     = "root@pam"
-}
+# variable "pm_user" {
+#   type        = string
+#   description = "Proxmox username"
+#   default     = "root@pam"
+# }
 
-variable "pm_password" {
-  type        = string
-  description = "Proxmox password"
-  sensitive   = true
-}
+# variable "pm_password" {
+#   type        = string
+#   description = "Proxmox password"
+#   sensitive   = true
+# }
 
 variable "pm_api_token_id" {
   type        = string
@@ -152,18 +152,6 @@ variable "private_key_path" {
   description = "Path to private key for remote-exec and Ansible"
 }
 
-variable "remote_exec_master_enabled" {
-  type        = bool
-  description = "Enable remote-exec provisioner on master"
-  default     = true
-}
-
-variable "remote_exec_node_enabled" {
-  type        = bool
-  description = "Enable remote-exec provisioner on nodes"
-  default     = true
-}
-
 # ===== Master VM settings =====
 variable "master_count" {
   type        = number
@@ -205,12 +193,6 @@ variable "master_vmid" {
   type        = number
   description = "VMID for master"
   default     = 230
-}
-
-variable "master_hostname" {
-  type        = string
-  description = "Hostname to set for master via remote-exec"
-  default     = "k8s-master"
 }
 
 variable "master_tags" {
@@ -266,6 +248,49 @@ variable "node_tags" {
   type        = string
   description = "Tags for worker node VMs (comma-separated)"
   default     = "k3s,worker,terraform"
+}
+
+# ===== Load Balancer settings =====
+variable "nginx_lb_name" {
+  type        = string
+  description = "Name for the Nginx load balancer VM"
+  default     = "k8s-nginx-lb"
+}
+
+variable "nginx_lb_cores" {
+  type        = number
+  description = "vCPU cores for Nginx load balancer"
+  default     = 1
+}
+
+variable "nginx_lb_sockets" {
+  type        = number
+  description = "CPU sockets for Nginx load balancer"
+  default     = 1
+}
+
+variable "nginx_lb_memory" {
+  type        = number
+  description = "Memory (MB) for Nginx load balancer"
+  default     = 1024
+}
+
+variable "nginx_lb_ip_host" {
+  type        = number
+  description = "Last octet for Nginx load balancer IP"
+  default     = 201
+}
+
+variable "nginx_lb_vmid" {
+  type        = number
+  description = "VMID for Nginx load balancer"
+  default     = 201
+}
+
+variable "nginx_lb_tags" {
+  type        = string
+  description = "Tags for Nginx load balancer VM (comma-separated)"
+  default     = "k8s,loadbalancer,nginx,terraform"
 }
 
 # ===== SSH access for cloud-init =====

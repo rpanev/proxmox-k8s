@@ -1,15 +1,22 @@
-resource "proxmox_vm_qemu" "nginx-lb" {
-  name        = var.nginx_lb_name
+resource "proxmox_vm_qemu" "k8s-node" {
+  count = var.nodes_count # number of VMs to create
+  name  = "${var.node_name_prefix}${count.index + 1}"
+
   target_node = var.target_node
-  clone       = var.template_name
+
+  ### Clone VM operation
+  clone = var.template_name
+  # note that cores, sockets and memory settings are not copied from the source VM template
   cpu {
-    cores   = var.nginx_lb_cores
-    sockets = var.nginx_lb_sockets
+    cores   = var.node_cores
+    sockets = var.node_sockets
   }
-  memory = var.nginx_lb_memory
-  agent  = var.enable_agent ? 1 : 0
-  tags   = var.nginx_lb_tags
+  memory = var.node_memory
+  tags   = var.node_tags
   pool   = proxmox_pool.k8s.poolid
+
+  # Activate QEMU agent for this VM
+  agent = var.enable_agent ? 1 : 0
 
   scsihw   = var.scsihw
   bootdisk = var.bootdisk
@@ -42,9 +49,9 @@ resource "proxmox_vm_qemu" "nginx-lb" {
 
   boot = var.boot_order
 
-  ipconfig0 = "ip=${var.ip_base}.${var.nginx_lb_ip_host}/${var.network_cidr},gw=${var.gateway}"
+  ipconfig0 = "ip=${var.ip_base}.${count.index + var.node_ip_start}/${var.network_cidr},gw=${var.gateway}"
   os_type   = var.os_type
-  vmid      = var.nginx_lb_vmid
+  vmid      = count.index + var.node_vmid_start
 
   ciuser     = var.ssh_user
   cipassword = var.ssh_password
@@ -56,7 +63,7 @@ resource "proxmox_vm_qemu" "nginx-lb" {
   }
 
   provisioner "remote-exec" {
-    inline = ["echo ${var.ssh_password} | sudo -S -k hostnamectl set-hostname ${var.nginx_lb_name}"]
+    inline = ["echo ${var.ssh_password} | sudo -S -k hostnamectl set-hostname ${self.name}"]
 
     connection {
       host        = self.ssh_host
@@ -66,5 +73,5 @@ resource "proxmox_vm_qemu" "nginx-lb" {
       private_key = file(var.private_key_path)
     }
   }
-}
 
+}

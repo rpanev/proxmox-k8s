@@ -1,14 +1,15 @@
-resource "proxmox_vm_qemu" "nginx-lb" {
-  name        = var.nginx_lb_name
+resource "proxmox_vm_qemu" "k8s-master" {
+  count       = var.master_count
+  name        = "${var.master_name}-${count.index + 1}"
   target_node = var.target_node
   clone       = var.template_name
   cpu {
-    cores   = var.nginx_lb_cores
-    sockets = var.nginx_lb_sockets
+    cores   = var.master_cores
+    sockets = var.master_sockets
   }
-  memory = var.nginx_lb_memory
+  memory = var.master_memory
   agent  = var.enable_agent ? 1 : 0
-  tags   = var.nginx_lb_tags
+  tags   = var.master_tags
   pool   = proxmox_pool.k8s.poolid
 
   scsihw   = var.scsihw
@@ -42,9 +43,9 @@ resource "proxmox_vm_qemu" "nginx-lb" {
 
   boot = var.boot_order
 
-  ipconfig0 = "ip=${var.ip_base}.${var.nginx_lb_ip_host}/${var.network_cidr},gw=${var.gateway}"
+  ipconfig0 = "ip=${var.ip_base}.${var.master_ip_host + count.index}/${var.network_cidr},gw=${var.gateway}"
   os_type   = var.os_type
-  vmid      = var.nginx_lb_vmid
+  vmid      = var.master_vmid + count.index
 
   ciuser     = var.ssh_user
   cipassword = var.ssh_password
@@ -56,7 +57,7 @@ resource "proxmox_vm_qemu" "nginx-lb" {
   }
 
   provisioner "remote-exec" {
-    inline = ["echo ${var.ssh_password} | sudo -S -k hostnamectl set-hostname ${var.nginx_lb_name}"]
+    inline = ["echo ${var.ssh_password} | sudo -S -k hostnamectl set-hostname ${var.master_name}-${count.index + 1}"]
 
     connection {
       host        = self.ssh_host
@@ -67,4 +68,3 @@ resource "proxmox_vm_qemu" "nginx-lb" {
     }
   }
 }
-
