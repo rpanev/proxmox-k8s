@@ -1,18 +1,20 @@
 ---
-- name: Configure Alma Linux Worker Nodes
-  hosts: worker
+- name: Configure Alma Linux Additional Master Node (HA K3s)
+  hosts: additional_masters
   become: yes
   vars:
-    master_ip: "{{ master_private_ip }}"
     k3s_version: "{{ lookup('env', 'K3S_VERSION') | default('v1.27.5+k3s1') }}"
     k3s_token: "{{ lookup('env', 'K3S_TOKEN') | default('K3S-HA-CLUSTER-SECRET-TOKEN-12345') }}"
-
   tasks:
     - name: Ensure required directories exist
-      ansible.builtin.file:
-        path: "{{ ansible_env.HOME }}/.antigen"
+      file:
+        path: "{{ item }}"
         state: directory
         mode: '0755'
+      with_items:
+        - ~/.antigen
+        - /var/lib/rancher/k3s/server/manifests
+        - ~/.kube
 
     - name: Install required packages
       ansible.builtin.yum:
@@ -21,33 +23,35 @@
           - curl
           - zsh
           - util-linux
+          - iptables
+          - nfs-utils
           - openssh-server
         state: present
-
+        
     - name: Ensure .ssh directory exists
       ansible.builtin.file:
         path: ~/.ssh
         state: directory
         mode: '0700'
-
+        
     - name: Copy private SSH key to server
       ansible.builtin.copy:
         src: keys/k3s_cluster_key
         dest: ~/.ssh/id_rsa
         mode: '0600'
-
+        
     - name: Copy public SSH key to server
       ansible.builtin.copy:
         src: keys/k3s_cluster_key.pub
         dest: ~/.ssh/id_rsa.pub
         mode: '0644'
-
+        
     - name: Add public key to authorized_keys
       ansible.builtin.authorized_key:
         user: root
         state: present
         key: "{{ lookup('file', 'keys/k3s_cluster_key.pub') }}"
-
+        
     - name: Disable StrictHostKeyChecking for easier SSH
       ansible.builtin.lineinfile:
         path: /etc/ssh/ssh_config
@@ -58,20 +62,18 @@
     - name: Download and install Antigen
       ansible.builtin.get_url:
         url: https://git.io/antigen
-        dest: "{{ ansible_env.HOME }}/.antigen/antigen.zsh"
+        dest: ~/.antigen/antigen.zsh
         mode: '0644'
 
-    - name: Set default shell to Zsh for the user
-      ansible.builtin.shell:
-        cmd: chsh -s /bin/zsh {{ ansible_user }}
-      args:
-        executable: /bin/bash
-      when: ansible_user != 'root'
+    - name: Set default shell to Zsh
+      ansible.builtin.command:
+        cmd: chsh -s /bin/zsh
+        creates: /bin/zsh
 
     - name: Configure .zshrc using Jinja2 template
       ansible.builtin.template:
         src: templates/zshrc.j2
-        dest: "{{ ansible_env.HOME }}/.zshrc"
+        dest: ~/.zshrc
         mode: '0644'
 
     - name: Set default shell to Zsh for the user
@@ -87,25 +89,6 @@
     # - debug:
     #     msg: "{{ shell_check.stdout }}"
 
-    - name: Install required packages for K3s worker
-      ansible.builtin.yum:
-        name:
-          - iptables
-          - nfs-utils
-        state: present
-
-    - name: Create directory for K3s
-      ansible.builtin.file:
-        path: /etc/rancher/k3s
-        state: directory
-        mode: '0755'
-
-    - name: Create directory for token file
-      ansible.builtin.file:
-        path: /tmp
-        state: directory
-        mode: '0755'
-
     - name: Wait for load balancer to be ready
       ansible.builtin.wait_for:
         host: "{{ loadbalancer_ip }}"
@@ -113,27 +96,52 @@
         timeout: 300
         msg: "Timeout waiting for load balancer to be ready"
 
-    - name: Verify shared token is available
-      ansible.builtin.debug:
-        msg: "Using shared K3s token for HA cluster"
-
-    - name: Configure k3s worker
+    - name: Install K3s on additional master (join cluster)
       ansible.builtin.shell: |
-        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=https://{{ loadbalancer_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -
-      args:
-        executable: /bin/bash
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} \
+          K3S_TOKEN={{ k3s_token }} \
+          INSTALL_K3S_EXEC="--disable-cloud-controller \
+          --kubelet-arg=cloud-provider=external \
+          --server https://{{ loadbalancer_ip }}:6443 \
+          --disable=traefik \
+          --tls-san={{ ansible_host }} \
+          --tls-san={{ loadbalancer_ip }} \
+          --cluster-cidr=10.42.0.0/16 \
+          --service-cidr=10.43.0.0/16 \
+          --kube-controller-manager-arg=bind-address=0.0.0.0 \
+          --kube-scheduler-arg=bind-address=0.0.0.0 \
+          --kube-proxy-arg=metrics-bind-address=0.0.0.0" \
+          sh -s - server
       register: k3s_install
-      changed_when: "'Installing K3s agent' in k3s_install.stdout"
+      changed_when: k3s_install.rc == 0
 
-    # Removed debug output
-    - name: Wait for K3s worker to be ready
-      ansible.builtin.pause:
-        seconds: 10
-
-    # Simple verification that K3s agent is running
-    - name: Verify K3s agent is running
+    - name: Wait for K3s to be ready
       ansible.builtin.systemd:
-        name: k3s-agent
+        name: k3s
         state: started
-      register: k3s_agent_status
+        enabled: yes
+      register: k3s_service
+      until: k3s_service.status.ActiveState == "active"
+      retries: 10
+      delay: 10
+
+    - name: Copy kubeconfig to user home directory
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ~/.kube/config
+        remote_src: yes
+        mode: '0600'
+
+    - name: Update kubeconfig with server IP
+      ansible.builtin.replace:
+        path: ~/.kube/config
+        regexp: 'https://127.0.0.1:6443'
+        replace: 'https://{{ ansible_host }}:6443'
+
+    # Simple verification that K3s is running
+    - name: Verify K3s master is running
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+      register: k3s_status
       changed_when: false
