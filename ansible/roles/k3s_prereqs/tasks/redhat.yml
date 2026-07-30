@@ -1,0 +1,87 @@
+---
+- name: Stop and disable firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  when: k3s_disable_firewalld | bool
+  failed_when: false
+
+- name: Check container_manage_cgroup SELinux boolean exists
+  ansible.builtin.command: getsebool container_manage_cgroup
+  register: k3s_container_manage_cgroup_check
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_selinux is defined
+    - ansible_selinux.status == 'enabled'
+
+- name: Allow K3s container cgroup management (SELinux)
+  ansible.builtin.command: setsebool -P container_manage_cgroup on
+  when:
+    - ansible_selinux is defined
+    - ansible_selinux.status == 'enabled'
+    - k3s_container_manage_cgroup_check is not skipped
+    - k3s_container_manage_cgroup_check.rc == 0
+  changed_when: false
+
+- name: Detect EL10+ (legacy iptables modules require kernel-modules-extra)
+  ansible.builtin.set_fact:
+    k3s_el10_netfilter: "{{ ansible_distribution_major_version | int >= 10 }}"
+
+- name: Install netfilter packages for EL10 K3s
+  ansible.builtin.dnf:
+    name:
+      - kernel-modules-extra
+      - nftables
+    state: present
+  when: k3s_el10_netfilter | bool
+
+- name: Persist EL10 netfilter kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k3s-netfilter.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      xt_comment
+      xt_mark
+      xt_MASQUERADE
+      ip_tables
+      iptable_filter
+      iptable_nat
+  when: k3s_el10_netfilter | bool
+
+- name: Load EL10 netfilter kernel modules
+  ansible.builtin.command: modprobe {{ item }}
+  loop:
+    - xt_comment
+    - xt_mark
+    - xt_MASQUERADE
+    - ip_tables
+    - iptable_filter
+    - iptable_nat
+  changed_when: false
+  failed_when: false
+  when: k3s_el10_netfilter | bool
+
+- name: Probe xt_comment for running kernel
+  ansible.builtin.command: modprobe xt_comment
+  register: k3s_xt_comment_probe
+  changed_when: false
+  failed_when: false
+  when: k3s_el10_netfilter | bool
+
+- name: Reboot to kernel with netfilter modules when probe failed
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 30
+    test_command: modprobe xt_comment
+  when:
+    - k3s_el10_netfilter | bool
+    - k3s_xt_comment_probe.rc != 0
+
+- name: Use nftables kube-proxy on EL10
+  ansible.builtin.set_fact:
+    k3s_kube_proxy_mode: nftables
+  when: k3s_el10_netfilter | bool

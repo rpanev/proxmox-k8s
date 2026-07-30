@@ -1,0 +1,48 @@
+---
+# Full OS upgrade on first Ansible pass (replaces cloud-init package upgrade).
+
+- name: Wait for cloud-init to finish before package operations
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+- name: Wait for dpkg/apt lock to be released (Debian family)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for i in $(seq 1 {{ (common_apt_lock_timeout | int) // 5 }}); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+         && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 5
+    done
+    echo "timeout waiting for apt/dpkg lock after {{ common_apt_lock_timeout }}s" >&2
+    ps aux | grep -E 'apt|dpkg' || true
+    exit 1
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: ansible_os_family == 'Debian'
+
+- name: Upgrade all packages (Debian family)
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+    update_cache_retries: "{{ common_apt_update_retries }}"
+    update_cache_retry_max_delay: "{{ common_apt_update_retry_delay }}"
+    lock_timeout: "{{ common_apt_lock_timeout }}"
+  register: common_apt_upgrade
+  when:
+    - ansible_os_family == 'Debian'
+    - common_os_upgrade | bool
+
+- name: Upgrade all packages (RHEL family)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+  register: common_dnf_upgrade
+  when:
+    - ansible_os_family == 'RedHat'
+    - common_os_upgrade | bool

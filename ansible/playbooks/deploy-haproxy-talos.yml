@@ -1,0 +1,15 @@
+---
+- import_playbook: wait-for-ssh.yml
+  vars:
+    wait_for_ssh_hosts: k8s_lb
+    wait_for_ssh_timeout: 600
+    wait_for_ssh_delay: 10
+
+- name: HAProxy — Kubernetes API LB for Talos control planes
+  hosts: k8s_lb
+  gather_facts: true
+  roles:
+    - role: haproxy
+      vars:
+        haproxy_backend_group: talos_controlplane
+        haproxy_backend_health_check: false

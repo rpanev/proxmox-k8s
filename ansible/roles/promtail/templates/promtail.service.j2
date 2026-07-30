@@ -1,0 +1,18 @@
+[Unit]
+Description=Promtail log shipper (Grafana Loki)
+Documentation=https://grafana.com/docs/loki/latest/clients/promtail/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ promtail_user }}
+Group={{ promtail_group }}
+SupplementaryGroups=adm systemd-journal
+ExecStart={{ promtail_install_dir }}/promtail -config.file={{ promtail_config_path }}
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

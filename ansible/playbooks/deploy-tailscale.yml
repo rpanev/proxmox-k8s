@@ -1,0 +1,9 @@
+---
+# Tailscale operator — requires working kubeconfig on deploy host.
+
+- name: Tailscale Kubernetes Operator (cluster pods only)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: tailscale_operator

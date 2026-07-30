@@ -1,0 +1,17 @@
+---
+# Promtail — ships host logs (journald + /var/log) to Loki.
+# Installed on every homelab VM when LOKI_ENABLED=true (see group_vars/all/loki.yml).
+promtail_version: "3.5.1"
+promtail_install_dir: /usr/local/bin
+promtail_config_path: /etc/promtail/config.yml
+promtail_positions_path: /var/lib/promtail/positions.yaml
+promtail_user: promtail
+promtail_group: promtail
+promtail_service: promtail
+
+# Written by deploy-infra.sh (first leader IP + NodePort on loki-gateway).
+loki_push_host: ""
+loki_gateway_node_port: 31080
+
+# Host role label for Loki/Grafana filtering (control-plane | worker | lb).
+promtail_host_role: "{{ 'lb' if inventory_hostname in groups.get('k8s_lb', []) else ('control-plane' if inventory_hostname in (groups.get('k3s_first_leader', []) + groups.get('k3s_additional_leaders', [])) else 'worker') }}"

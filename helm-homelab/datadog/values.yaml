@@ -1,0 +1,41 @@
+# Datadog Agent — homelab (K8s only, tuned for free tier)
+# API key: K8s secret datadog-api-key (created at deploy from secrets.env)
+# clusterName + site set via --set in deploy_datadog()
+
+datadog:
+  apiKeyExistingSecret: datadog-api-key
+  kubeStateMetricsEnabled: false
+  kubeStateMetricsCore:
+    enabled: true
+  collectEvents: true
+  logs:
+    enabled: true
+    containerCollectAll: true
+  apm:
+    instrumentation:
+      enabled: false
+  processAgent:
+    enabled: false
+    processCollection: false
+    containerCollection: false
+  orchestratorExplorer:
+    enabled: false
+  # Discovery (>=7.78) auto-enables system-probe, which hostPath-mounts
+  # /etc/redhat-release and /etc/lsb-release — kubelet creates them as dirs on Debian.
+  discovery:
+    enabled: false
+  disableDefaultOsReleasePaths: true
+
+clusterAgent:
+  enabled: true
+  replicas: 1
+
+agents:
+  enabled: true
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule

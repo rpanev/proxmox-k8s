@@ -1,0 +1,10 @@
+# Talos overlay — immutable OS; node-collector hostPath mounts fail on Talos workers.
+# Workload vulnerability scanning (Grafana 16337) is unchanged.
+operator:
+  infraAssessmentScannerEnabled: false
+  clusterComplianceEnabled: false
+  rbacAssessmentScannerEnabled: false
+  scanNodeCollectorLimit: 0
+
+nodeCollector:
+  useNodeSelector: false

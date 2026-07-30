@@ -1,0 +1,29 @@
+# external-dns — Cloudflare A records for Gateway API HTTPRoutes → GATEWAY_LB_IP
+provider:
+  name: cloudflare
+
+env:
+  - name: CF_API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: cloudflare-api-token
+        key: api-token
+
+policy: upsert-only
+registry: txt
+# txtOwnerId + domainFilters + extraArgs set at deploy from secrets.env
+
+# gateway-httproute source watches ReferenceGrants for cross-namespace refs;
+# without this the referencegrant informer cache-sync blocks and sync never runs.
+rbac:
+  additionalPermissions:
+    - apiGroups: ["gateway.networking.k8s.io"]
+      resources: ["referencegrants"]
+      verbs: ["get", "watch", "list"]
+
+# gateway-httproute only — external-dns 0.21.x does not support --source=gateway
+sources:
+  - gateway-httproute
+
+logLevel: info
+interval: 1m

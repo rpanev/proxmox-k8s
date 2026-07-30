@@ -1,0 +1,140 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: {{ promtail_positions_path }}
+
+clients:
+  - url: http://{{ loki_push_host }}:{{ loki_gateway_node_port }}/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
+
+scrape_configs:
+  # systemd journal — primary source for server / daemon logs
+  - job_name: journal
+    journal:
+      max_age: 168h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ["__journal__systemd_unit"]
+        target_label: unit
+      - source_labels: ["__journal__hostname"]
+        target_label: journal_hostname
+      - target_label: host
+        replacement: {{ ansible_hostname }}
+      - target_label: instance
+        replacement: {{ ansible_hostname }}
+      - target_label: role
+        replacement: {{ promtail_host_role }}
+      - target_label: env
+        replacement: {{ env_id | default('homelab') }}
+      # Labels for Grafana dashboard 24574 (Logging via Loki v3)
+      - source_labels: ["unit"]
+        regex: 'haproxy\.service'
+        target_label: container_name
+        replacement: haproxy
+      - source_labels: ["unit"]
+        regex: 'haproxy\.service'
+        target_label: service_name
+        replacement: lb
+      - source_labels: ["unit"]
+        regex: 'k3s\.service'
+        target_label: container_name
+        replacement: k3s
+      - source_labels: ["unit"]
+        regex: 'k3s\.service'
+        target_label: service_name
+        replacement: k3s
+      - source_labels: ["unit"]
+        regex: 'k3s-agent\.service'
+        target_label: container_name
+        replacement: k3s-agent
+      - source_labels: ["unit"]
+        regex: 'k3s-agent\.service'
+        target_label: service_name
+        replacement: k3s
+      - source_labels: ["unit"]
+        regex: 'prometheus-node-exporter\.service'
+        target_label: container_name
+        replacement: node-exporter
+      - source_labels: ["unit"]
+        regex: 'prometheus-node-exporter\.service'
+        target_label: service_name
+        replacement: monitoring
+      - source_labels: ["unit"]
+        regex: 'promtail\.service'
+        target_label: container_name
+        replacement: promtail
+      - source_labels: ["unit"]
+        regex: 'promtail\.service'
+        target_label: service_name
+        replacement: monitoring
+      - source_labels: ["container_name"]
+        regex: '^$'
+        target_label: container_name
+        replacement: systemd
+      - source_labels: ["service_name"]
+        regex: '^$'
+        target_label: service_name
+        replacement: journal
+
+  # classic syslog file (Debian)
+  - job_name: syslog
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: syslog
+          host: {{ ansible_hostname }}
+          instance: {{ ansible_hostname }}
+          container_name: syslog
+          service_name: host-logs
+          role: {{ promtail_host_role }}
+          env: {{ env_id | default('homelab') }}
+          __path__: /var/log/syslog
+
+{% if ansible_os_family == 'RedHat' %}
+  - job_name: messages
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: messages
+          host: {{ ansible_hostname }}
+          instance: {{ ansible_hostname }}
+          container_name: messages
+          service_name: host-logs
+          role: {{ promtail_host_role }}
+          env: {{ env_id | default('homelab') }}
+          __path__: /var/log/messages
+{% endif %}
+
+{% if inventory_hostname in groups.get('k8s_lb', []) %}
+  # HAProxy logs (rsyslog → /var/log/haproxy.log)
+  - job_name: haproxy
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: haproxy
+          host: {{ ansible_hostname }}
+          instance: {{ ansible_hostname }}
+          container_name: haproxy
+          service_name: lb
+          role: lb
+          env: {{ env_id | default('homelab') }}
+          __path__: /var/log/haproxy.log
+{% endif %}
+
+  # catch-all for other rotated logs in /var/log
+  - job_name: varlogs
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: varlogs
+          host: {{ ansible_hostname }}
+          instance: {{ ansible_hostname }}
+          container_name: varlogs
+          service_name: host-logs
+          role: {{ promtail_host_role }}
+          env: {{ env_id | default('homelab') }}
+          __path__: /var/log/*.log

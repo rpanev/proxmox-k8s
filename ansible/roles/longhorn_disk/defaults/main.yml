@@ -1,0 +1,15 @@
+---
+longhorn_enabled: true
+longhorn_mount_path: /var/mnt/longhorn-data
+longhorn_data_disk_gb: 30
+longhorn_data_disk_fstype: xfs
+longhorn_data_disk_candidates:
+  - /dev/sda
+  - /dev/sdb
+  - /dev/sdc
+  - /dev/vda
+  - /dev/vdb
+  - /dev/vdc
+longhorn_data_disk_min_bytes: "{{ (longhorn_data_disk_gb | int) * 1073741824 * 0.8 | int }}"
+longhorn_iscsi_service_debian: open-iscsi
+longhorn_iscsi_service_redhat: iscsid

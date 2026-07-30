@@ -1,0 +1,19 @@
+---
+- name: Validate supported OS
+  ansible.builtin.include_tasks: validate-os.yml
+
+- name: Wait for cloud-init and optional OS upgrade
+  ansible.builtin.include_tasks: upgrade-os.yml
+
+- name: Set system hostname from inventory
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+  when: inventory_hostname is defined and inventory_hostname | length > 0
+
+- name: Baseline packages (Debian family)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Baseline packages (RHEL family)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_os_family == 'RedHat'

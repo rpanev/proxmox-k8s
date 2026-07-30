@@ -1,0 +1,9 @@
+# Envoy Gateway — Gateway API controller (homelab LAN ingress)
+config:
+  envoyGateway:
+    logging:
+      level:
+        default: info
+
+deployment:
+  replicas: 1

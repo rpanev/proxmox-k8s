@@ -1,0 +1,188 @@
+---
+- name: Skip Longhorn disk prep when disabled
+  ansible.builtin.meta: end_host
+  when: not (longhorn_enabled | bool)
+
+- name: Validate supported OS
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: validate-os
+
+- name: Install disk tooling (Debian family)
+  ansible.builtin.apt:
+    name:
+      - parted
+      - xfsprogs
+    state: present
+    lock_timeout: "{{ common_apt_lock_timeout | default(300) }}"
+  when: ansible_os_family == 'Debian'
+
+- name: Install disk tooling (RHEL family)
+  ansible.builtin.dnf:
+    name:
+      - parted
+      - xfsprogs
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'RedHat'
+
+- name: Detect dedicated Longhorn block device
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: longhorn_disk_stats
+  loop: "{{ longhorn_data_disk_candidates }}"
+  failed_when: false
+
+- name: Get root filesystem block device
+  ansible.builtin.command: findmnt -n -o SOURCE --target /
+  register: longhorn_root_source
+  changed_when: false
+
+- name: Gather block device sizes for Longhorn candidates
+  ansible.builtin.command: blockdev --getsize64 {{ item.item }}
+  loop: "{{ longhorn_disk_stats.results }}"
+  when:
+    - item.stat is defined
+    - item.stat.exists
+  register: longhorn_disk_size_checks
+  changed_when: false
+  failed_when: false
+
+- name: Build eligible Longhorn block devices
+  ansible.builtin.set_fact:
+    longhorn_disk_eligible: "{{ longhorn_disk_eligible | default([]) + [item.item.item] }}"
+  loop: "{{ longhorn_disk_size_checks.results }}"
+  when:
+    - item.rc is defined
+    - item.rc == 0
+    - (item.stdout | trim | int) >= (longhorn_data_disk_min_bytes | int)
+    - item.item.item != (longhorn_root_source.stdout | trim)
+    - not (longhorn_root_source.stdout | trim).startswith(item.item.item)
+  loop_control:
+    label: "{{ item.item.item | default('skip') }}"
+
+- name: Select dedicated Longhorn block device
+  ansible.builtin.set_fact:
+    longhorn_disk_path: "{{ longhorn_disk_eligible | default([]) | first | default('') }}"
+
+- name: Require dedicated Longhorn data disk
+  ansible.builtin.assert:
+    that:
+      - longhorn_disk_path | length > 0
+    fail_msg: >-
+      No Longhorn data disk found (expected one of {{ longhorn_data_disk_candidates | join(', ') }}).
+      Enable worker_data_disk_enabled in Terraform and re-apply.
+
+- name: Set Longhorn partition device path
+  ansible.builtin.set_fact:
+    longhorn_partition: "{{ longhorn_disk_path }}1"
+
+- name: Check if Longhorn partition exists
+  ansible.builtin.stat:
+    path: "{{ longhorn_partition }}"
+  register: longhorn_partition_stat
+
+- name: Get Longhorn partition size in bytes
+  ansible.builtin.command: blockdev --getsize64 {{ longhorn_partition }}
+  register: longhorn_partition_size
+  changed_when: false
+  failed_when: false
+  when: longhorn_partition_stat.stat.exists
+
+- name: Check if Longhorn partition is usable
+  ansible.builtin.set_fact:
+    longhorn_partition_valid: >-
+      {{
+        longhorn_partition_stat.stat.exists
+        and longhorn_partition_size is not skipped
+        and longhorn_partition_size.rc == 0
+        and (longhorn_partition_size.stdout | trim | int) >= (longhorn_data_disk_min_bytes | int)
+      }}
+
+- name: Create GPT partition on raw Longhorn disk
+  ansible.builtin.command: >
+    parted -s {{ longhorn_disk_path }} mklabel gpt mkpart longhorn {{ longhorn_data_disk_fstype }} 0% 100%
+  when: not (longhorn_partition_valid | default(false) | bool)
+
+- name: Reread partition table
+  ansible.builtin.command: partprobe {{ longhorn_disk_path }}
+  changed_when: false
+  failed_when: false
+
+- name: Check for filesystem on dedicated Longhorn partition
+  ansible.builtin.command: blkid -s UUID -o value {{ longhorn_partition }}
+  register: longhorn_fs_uuid_check
+  changed_when: false
+  failed_when: false
+
+- name: Format dedicated Longhorn partition as XFS
+  ansible.builtin.command: mkfs.xfs -f {{ longhorn_partition }}
+  when:
+    - longhorn_data_disk_fstype == 'xfs'
+    - longhorn_fs_uuid_check.stdout | trim | length == 0
+
+- name: Format dedicated Longhorn partition as ext4
+  ansible.builtin.command: mkfs.ext4 -F {{ longhorn_partition }}
+  when:
+    - longhorn_data_disk_fstype == 'ext4'
+    - longhorn_fs_uuid_check.stdout | trim | length == 0
+
+- name: Read filesystem UUID from dedicated Longhorn partition
+  ansible.builtin.command: blkid -s UUID -o value {{ longhorn_partition }}
+  register: longhorn_fs_uuid
+  changed_when: false
+
+- name: Require filesystem UUID on dedicated Longhorn partition
+  ansible.builtin.assert:
+    that:
+      - longhorn_fs_uuid.stdout | trim | length > 0
+    fail_msg: "Failed to format {{ longhorn_partition }} as {{ longhorn_data_disk_fstype }}"
+
+- name: Get current mount source at Longhorn path
+  ansible.builtin.command: findmnt -n -o SOURCE --target {{ longhorn_mount_path }}
+  register: longhorn_current_source
+  changed_when: false
+  failed_when: false
+
+- name: Unmount wrong device from Longhorn path
+  ansible.builtin.command: umount {{ longhorn_mount_path }}
+  when:
+    - longhorn_current_source.rc == 0
+    - (longhorn_current_source.stdout | trim) != ('UUID=' ~ (longhorn_fs_uuid.stdout | trim))
+    - (longhorn_current_source.stdout | trim) != longhorn_partition
+
+- name: Ensure Longhorn mount directory exists
+  ansible.builtin.file:
+    path: "{{ longhorn_mount_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Mount dedicated Longhorn partition by UUID in fstab
+  ansible.builtin.mount:
+    path: "{{ longhorn_mount_path }}"
+    src: "UUID={{ longhorn_fs_uuid.stdout | trim }}"
+    fstype: "{{ longhorn_data_disk_fstype }}"
+    opts: defaults
+    state: mounted
+
+- name: Enable iSCSI daemon for Longhorn (Debian family)
+  ansible.builtin.service:
+    name: "{{ longhorn_iscsi_service_debian }}"
+    state: started
+    enabled: true
+  when: ansible_os_family == 'Debian'
+
+- name: Enable iSCSI daemon for Longhorn (RHEL family)
+  ansible.builtin.service:
+    name: "{{ longhorn_iscsi_service_redhat }}"
+    state: started
+    enabled: true
+  when: ansible_os_family == 'RedHat'
+
+- name: Longhorn disk summary
+  ansible.builtin.debug:
+    msg: >-
+      Longhorn ready on {{ inventory_hostname }}:
+      UUID={{ longhorn_fs_uuid.stdout | trim }} → {{ longhorn_mount_path }} ({{ longhorn_data_disk_fstype }})

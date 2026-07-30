@@ -1,0 +1,17 @@
+---
+- name: Install HAProxy (Debian family — Debian 13, Ubuntu 24/26)
+  ansible.builtin.apt:
+    name: "{{ haproxy_package }}"
+    state: present
+    update_cache: true
+
+- name: Install rsyslog for HAProxy logging
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+
+- name: Ensure rsyslog is running
+  ansible.builtin.service:
+    name: rsyslog
+    state: started
+    enabled: true

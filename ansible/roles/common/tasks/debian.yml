@@ -1,0 +1,33 @@
+---
+- name: Wait for dpkg/apt lock to be released
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for i in $(seq 1 {{ (common_apt_lock_timeout | int) // 5 }}); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+         && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 5
+    done
+    echo "timeout waiting for apt/dpkg lock after {{ common_apt_lock_timeout }}s" >&2
+    ps aux | grep -E 'apt|dpkg' || true
+    exit 1
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name: "{{ common_baseline_packages_debian }}"
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+    update_cache_retries: "{{ common_apt_update_retries }}"
+    update_cache_retry_max_delay: "{{ common_apt_update_retry_delay }}"
+    lock_timeout: "{{ common_apt_lock_timeout }}"
+
+- name: Enable chrony
+  ansible.builtin.service:
+    name: "{{ common_time_service_debian }}"
+    state: started
+    enabled: true

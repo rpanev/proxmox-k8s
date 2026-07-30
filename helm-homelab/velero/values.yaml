@@ -1,0 +1,45 @@
+# Velero — homelab K8s resource backups to MinIO (NAS)
+# S3 URL, bucket, credentials: deploy_velero() from secrets.env
+
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.11.1
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+credentials:
+  useSecret: true
+  existingSecret: velero-credentials
+
+snapshotsEnabled: false
+deployNodeAgent: false
+
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      default: true
+      config:
+        region: minio
+        s3ForcePathStyle: "true"
+
+schedules:
+  k8s-nightly:
+    disabled: false
+    schedule: "0 2 * * *"
+    template:
+      ttl: 720h
+      snapshotVolumes: false
+      excludedNamespaceScopedResources:
+        - persistentVolumeClaims
+      excludedClusterScopedResources:
+        - persistentVolumes
+
+# Prometheus metrics for Grafana dashboard 23838 (needs PROMETHEUS_ENABLED).
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring

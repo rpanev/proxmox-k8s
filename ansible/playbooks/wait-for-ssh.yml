@@ -1,0 +1,14 @@
+---
+# Wait until sshd is up on freshly cloned VMs (worker-03 often boots last).
+# Imported by deploy.yml before any gather_facts or roles.
+
+- name: Wait for SSH on cluster nodes
+  hosts: "{{ wait_for_ssh_hosts }}"
+  gather_facts: false
+  tasks:
+    - name: Wait until SSH is reachable
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ wait_for_ssh_timeout }}"
+        delay: "{{ wait_for_ssh_delay }}"
+        sleep: 5
+        connect_timeout: 30

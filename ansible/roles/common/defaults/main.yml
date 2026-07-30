@@ -1,0 +1,45 @@
+---
+common_baseline_packages_debian:
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - jq
+  - python3
+  - python3-apt
+  - unzip
+  - iptables
+  - socat
+  - conntrack
+  - ebtables
+  - ethtool
+  - open-iscsi
+  - nfs-common
+  - chrony
+
+common_baseline_packages_redhat:
+  - ca-certificates
+  - curl
+  - gnupg
+  - jq
+  - python3
+  - unzip
+  - iptables
+  - socat
+  - conntrack-tools
+  - ebtables
+  - ethtool
+  - iscsi-initiator-utils
+  - nfs-utils
+  - chrony
+
+common_time_service_debian: chrony
+common_time_service_redhat: chronyd
+
+common_apt_cache_valid_time: 3600
+common_apt_update_retries: 10
+common_apt_update_retry_delay: 30
+common_apt_lock_timeout: 300
+
+# Run dist-upgrade / dnf upgrade in common role (cloud_init_upgrade=false in Terraform)
+common_os_upgrade: true
