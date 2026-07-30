@@ -1,0 +1,68 @@
+---
+- name: Validate supported OS
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: validate-os
+
+- name: OS-specific K3s prerequisites (RHEL family)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_os_family == 'RedHat'
+
+- name: Disable swap
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | default(0) | int > 0
+  changed_when: ansible_swaptotal_mb | default(0) | int > 0
+
+- name: Remove swap entries from fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '\sswap\s'
+    state: absent
+
+- name: Load kernel modules for Kubernetes networking
+  ansible.builtin.command: modprobe {{ item }}
+  loop:
+    - overlay
+    - br_netfilter
+  changed_when: false
+  failed_when: false
+
+- name: Persist kernel modules for Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k3s.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      overlay
+      br_netfilter
+
+- name: Apply Kubernetes sysctl settings
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+  register: k3s_sysctl
+
+- name: Reload sysctl
+  ansible.builtin.command: sysctl --system
+  when: k3s_sysctl is changed
+  changed_when: k3s_sysctl is changed
+
+- name: Ensure curl is installed for K3s install script (Debian)
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    lock_timeout: "{{ common_apt_lock_timeout | default(300) }}"
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure curl is installed for K3s install script (RHEL)
+  ansible.builtin.dnf:
+    name: curl
+    state: present
+  when: ansible_os_family == 'RedHat'

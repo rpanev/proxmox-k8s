@@ -1,0 +1,60 @@
+---
+- name: Validate supported OS
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: validate-os
+
+- name: Wait for K3s API via load balancer
+  ansible.builtin.wait_for:
+    host: "{{ k3s_lb_ip }}"
+    port: "{{ k3s_api_port }}"
+    timeout: 300
+
+- name: Ensure K3s agent config directory exists
+  ansible.builtin.file:
+    path: "{{ k3s_config_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy K3s agent configuration
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ k3s_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: k3s_agent_config
+  notify: Restart k3s agent
+
+- name: Check if K3s agent is running
+  ansible.builtin.command: systemctl is-active {{ k3s_agent_service }}
+  register: k3s_agent_state
+  changed_when: false
+  failed_when: false
+
+- name: Install K3s agent
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="{{ k3s_server_url }}" \
+      K3S_TOKEN="{{ k3s_token }}" \
+      INSTALL_K3S_EXEC="agent --config {{ k3s_config_path }}" \
+      sh -
+  args:
+    executable: /bin/bash
+  when: k3s_agent_state.stdout != 'active'
+  register: k3s_agent_install
+  changed_when: k3s_agent_install.rc == 0
+
+- name: Apply K3s agent config change
+  ansible.builtin.meta: flush_handlers
+  when: k3s_agent_config is changed
+
+- name: Ensure K3s agent is enabled and running
+  ansible.builtin.service:
+    name: "{{ k3s_agent_service }}"
+    state: started
+    enabled: true

@@ -1,0 +1,46 @@
+# Managed by Ansible — K3s API TCP load balancer
+# https://docs.k3s.io/datastore/cluster-loadbalancer
+# No Keepalived: Proxmox HA keeps k8s-lb VM; bind on this host's static IP.
+
+global
+    log /dev/log local0
+    maxconn 4096
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log     global
+    mode    tcp
+    option  tcplog
+    timeout connect 10s
+    timeout client  1m
+    timeout server  1m
+
+{% if haproxy_expose_metrics | bool %}
+frontend metrics
+    bind *:{{ haproxy_metrics_port }}
+    mode http
+    option httplog
+    http-request use-service prometheus-exporter if { path /metrics }
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+{% endif %}
+
+frontend k3s-frontend
+    bind *:{{ k3s_api_port }}
+    mode tcp
+    option tcplog
+    default_backend k3s-backend
+
+backend k3s-backend
+    mode tcp
+    balance roundrobin
+{% if haproxy_backend_health_check | bool %}
+    option tcp-check
+    default-server inter 10s downinter 5s rise 2 fall 3
+{% endif %}
+{% for host in haproxy_backend_hosts %}
+    server {{ host | regex_replace('[^a-zA-Z0-9.-]', '-') }} {{ hostvars[host]['ansible_host'] }}:{{ k3s_api_port }}{{ ' check' if (haproxy_backend_health_check | bool) else '' }}
+{% endfor %}

@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ tailscale_namespace }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: operator-oauth
+  namespace: {{ tailscale_namespace }}
+type: Opaque
+stringData:
+  client_id: "{{ tailscale_oauth_client_id }}"
+  client_secret: "{{ tailscale_oauth_client_secret }}"

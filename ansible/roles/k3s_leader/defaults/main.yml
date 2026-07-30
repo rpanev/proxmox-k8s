@@ -1,0 +1,27 @@
+---
+k3s_service: k3s
+k3s_config_path: /etc/rancher/k3s/config.yaml
+k3s_api_port: 6443
+k3s_leader_mode: first
+
+# Pinned cluster networking (K3s defaults — explicit for docs/ops)
+k3s_cluster_cidr: "10.42.0.0/16"
+k3s_service_cidr: "10.43.0.0/16"
+k3s_cluster_domain: cluster.local
+
+# Homelab node labels (env_id from inventory)
+k3s_node_label_domain: homelab.panev.cloud
+k3s_control_plane_node_role: control-plane
+
+# Bundled components we replace (Gateway API + MetalLB + Longhorn)
+k3s_disable_components:
+  - traefik
+  - servicelb
+  - local-storage
+
+# Embedded etcd snapshots (CP disaster recovery — separate from Velero)
+k3s_etcd_snapshot_schedule: "0 */6 * * *"
+k3s_etcd_snapshot_retention: 5
+
+# Optional extra API TLS SANs (e.g. GATEWAY_DOMAIN from group_vars/k3s.yml)
+k3s_extra_tls_sans: []

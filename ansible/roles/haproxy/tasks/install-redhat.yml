@@ -1,0 +1,17 @@
+---
+- name: Install HAProxy (RHEL family — AlmaLinux 10, Rocky Linux 10)
+  ansible.builtin.dnf:
+    name: "{{ haproxy_package }}"
+    state: present
+    update_cache: true
+
+- name: Install rsyslog for HAProxy logging
+  ansible.builtin.dnf:
+    name: rsyslog
+    state: present
+
+- name: Ensure rsyslog is running
+  ansible.builtin.service:
+    name: rsyslog
+    state: started
+    enabled: true

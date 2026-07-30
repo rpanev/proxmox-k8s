@@ -1,0 +1,119 @@
+---
+# Tailscale Kubernetes Operator only — pods in cluster namespace `tailscale`.
+# Does NOT install tailscale/tailscaled on deploy host or on K3s VM nodes.
+
+- name: Skip Tailscale operator when disabled
+  ansible.builtin.meta: end_host
+  when: not (tailscale_enabled | bool)
+
+- name: Require Tailscale OAuth credentials
+  ansible.builtin.assert:
+    that:
+      - tailscale_oauth_client_id | default('') | length > 0
+      - tailscale_oauth_client_secret | default('') | length > 0
+    fail_msg: >-
+      Set TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET in secrets.env
+      (create OAuth client in Tailscale admin → Trust credentials).
+
+- name: Require Terraform-derived Tailscale network settings
+  ansible.builtin.assert:
+    that:
+      - homelab_network_cidr is defined
+      - tailscale_proxy_tag is defined
+      - env_id is defined
+    fail_msg: >-
+      homelab_network_cidr / tailscale_proxy_tag / env_id missing in inventory.
+      Run terraform apply and generate-inventory.sh.
+
+- name: Build Tailscale settings from Terraform inventory
+  ansible.builtin.set_fact:
+    tailscale_proxy_tag_effective: "{{ tailscale_proxy_tag }}"
+    tailscale_connector_name_effective: "{{ tailscale_connector_name }}"
+    tailscale_connector_hostname_effective: "{{ tailscale_connector_hostname }}"
+    tailscale_advertise_routes_effective: "{{ [homelab_network_cidr] + (tailscale_extra_routes | default([])) }}"
+
+- name: Fetch admin kubeconfig from cluster (SSH to leader, no Tailscale on nodes)
+  ansible.builtin.command: "{{ homelab_root }}/scripts/fetch-kubeconfig.sh"
+  environment:
+    HOMELAB_ROOT: "{{ homelab_root }}"
+  changed_when: false
+
+- name: Require kubectl on deploy host
+  ansible.builtin.command: kubectl version --client=true
+  environment:
+    KUBECONFIG: "{{ operator_kubeconfig_path }}"
+  changed_when: false
+
+- name: Install Helm on deploy host
+  ansible.builtin.include_tasks: install-helm.yml
+
+- name: Deploy Tailscale operator OAuth secret
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl apply -f -
+  args:
+    executable: /bin/bash
+    stdin: "{{ lookup('template', 'operator-oauth.yaml.j2') }}"
+  environment:
+    KUBECONFIG: "{{ operator_kubeconfig_path }}"
+  no_log: true
+
+- name: Add Tailscale Helm repository
+  ansible.builtin.command: helm repo add tailscale {{ tailscale_helm_repo_url }}
+  register: helm_repo_add
+  changed_when: helm_repo_add.rc == 0
+  failed_when: helm_repo_add.rc != 0 and 'already exists' not in helm_repo_add.stderr
+  environment:
+    KUBECONFIG: "{{ operator_kubeconfig_path }}"
+
+- name: Update Tailscale Helm repository
+  ansible.builtin.command: helm repo update tailscale
+  changed_when: false
+  environment:
+    KUBECONFIG: "{{ operator_kubeconfig_path }}"
+
+- name: Install Tailscale Kubernetes Operator
+  ansible.builtin.shell: |
+    set -euo pipefail
+    helm upgrade --install "{{ tailscale_helm_release }}" "{{ tailscale_helm_chart }}" \
+      --namespace "{{ tailscale_namespace }}" \
+      --create-namespace \
+      --kubeconfig "{{ operator_kubeconfig_path }}" \
+      --wait \
+      --timeout "{{ tailscale_helm_wait_timeout }}" \
+      {{ tailscale_helm_extra_set | trim }}
+  args:
+    executable: /bin/bash
+  vars:
+    tailscale_helm_extra_set: >-
+      --set-string proxyConfig.defaultTags={{ tailscale_proxy_tag_effective }}
+      {%- if tailscale_login_server | default('') | length > 0 %}
+      --set-string loginServer={{ tailscale_login_server }}
+      {%- endif %}
+      {%- if tailscale_api_server_proxy | bool %}
+      --set-string apiServerProxyConfig.mode=true
+      {%- endif %}
+  register: helm_install
+  changed_when: helm_install.rc == 0
+
+- name: Wait for Tailscale operator deployment
+  ansible.builtin.command: >
+    kubectl rollout status deployment/operator
+    -n {{ tailscale_namespace }}
+    --timeout=300s
+  environment:
+    KUBECONFIG: "{{ operator_kubeconfig_path }}"
+  changed_when: false
+
+- name: Deploy Tailscale subnet router for homelab LAN
+  ansible.builtin.include_tasks: subnet-router.yml
+  when: tailscale_subnet_router_enabled | default(true) | bool
+
+- name: Tailscale operator summary
+  ansible.builtin.debug:
+    msg:
+      - "Tailscale operator installed in Kubernetes namespace {{ tailscale_namespace }} only"
+      - "No tailscale client installed on deploy host or K3s VM nodes"
+      - "IngressClass: tailscale (use ingressClassName: tailscale on Ingress resources)"
+      - "Proxy devices tagged: {{ tailscale_proxy_tag_effective }} (environment {{ env_id }})"
+      - "Subnet router: {{ tailscale_connector_name_effective }} → {{ tailscale_advertise_routes_effective | join(', ') }}"

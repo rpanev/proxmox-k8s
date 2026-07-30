@@ -1,0 +1,135 @@
+---
+- name: Validate supported OS
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: validate-os
+
+- name: Require Loki push endpoint
+  ansible.builtin.assert:
+    that:
+      - loki_push_host | length > 0
+    fail_msg: "loki_push_host is empty — run write_ansible_loki_vars() before promtail (LOKI_ENABLED=true)."
+
+- name: Wait for apt/dpkg lock (unattended-upgrades on fresh LB VMs)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for _ in $(seq 1 60); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+        && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 5
+    done
+    echo "apt/dpkg lock still held after 5m" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: ansible_os_family == 'Debian'
+
+- name: Install promtail dependencies (Debian)
+  ansible.builtin.apt:
+    name:
+      - unzip
+      - ca-certificates
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: promtail_apt
+  until: promtail_apt is succeeded
+  retries: 6
+  delay: 30
+  when: ansible_os_family == 'Debian'
+
+- name: Install promtail dependencies (RHEL)
+  ansible.builtin.dnf:
+    name:
+      - unzip
+      - ca-certificates
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Create promtail group
+  ansible.builtin.group:
+    name: "{{ promtail_group }}"
+    system: true
+
+- name: Create promtail user
+  ansible.builtin.user:
+    name: "{{ promtail_user }}"
+    group: "{{ promtail_group }}"
+    groups:
+      - adm
+      - systemd-journal
+    append: true
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/promtail
+    create_home: false
+
+- name: Create promtail directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ promtail_user }}"
+    group: "{{ promtail_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /var/lib/promtail, mode: "0750" }
+    - { path: /etc/promtail, mode: "0755" }
+
+- name: Download promtail archive
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version }}/promtail-linux-amd64.zip"
+    dest: /tmp/promtail-linux-amd64.zip
+    mode: "0644"
+  register: promtail_dl
+
+- name: Unpack promtail binary
+  ansible.builtin.unarchive:
+    src: /tmp/promtail-linux-amd64.zip
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/promtail-linux-amd64
+  when: promtail_dl is changed
+
+- name: Install promtail binary
+  ansible.builtin.copy:
+    src: /tmp/promtail-linux-amd64
+    dest: "{{ promtail_install_dir }}/promtail"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart promtail
+
+- name: Deploy promtail configuration
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ promtail_config_path }}"
+    owner: root
+    group: "{{ promtail_group }}"
+    mode: "0640"
+  notify: Restart promtail
+
+- name: Deploy promtail systemd unit
+  ansible.builtin.template:
+    src: promtail.service.j2
+    dest: /etc/systemd/system/{{ promtail_service }}.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart promtail
+
+- name: Enable and start promtail
+  ansible.builtin.systemd:
+    name: "{{ promtail_service }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for promtail to listen locally
+  ansible.builtin.wait_for:
+    port: 9080
+    host: 127.0.0.1
+    timeout: 60

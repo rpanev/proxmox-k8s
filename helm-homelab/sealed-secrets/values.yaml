@@ -1,0 +1,3 @@
+# Sealed Secrets — installed from upstream GitHub manifest (helm repo 404 as of 2026)
+# Version: SEALED_SECRETS_VERSION in secrets.env (default 0.38.1)
+# kubeseal CLI: same release on deploy host

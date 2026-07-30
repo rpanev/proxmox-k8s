@@ -1,0 +1,7 @@
+---
+# Prometheus node_exporter as a host systemd service.
+# Used on VMs that are NOT Kubernetes nodes (e.g. the HAProxy LB), so they
+# still appear in the Node Exporter Full Grafana dashboard.
+node_exporter_package: prometheus-node-exporter
+node_exporter_service: prometheus-node-exporter
+node_exporter_port: 9100

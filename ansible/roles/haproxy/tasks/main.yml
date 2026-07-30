@@ -1,0 +1,67 @@
+---
+- name: Validate supported OS
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: validate-os
+
+- name: Build HAProxy backend host list
+  ansible.builtin.set_fact:
+    haproxy_backend_hosts: >-
+      {{
+        groups[haproxy_backend_group]
+        if (haproxy_backend_group | default('') | length > 0)
+        else (
+          (groups['k3s_first_leader'] | default([]))
+          + (groups['k3s_additional_leaders'] | default([]))
+        )
+      }}
+
+- name: Require at least one backend host in inventory
+  ansible.builtin.assert:
+    that:
+      - haproxy_backend_hosts | length > 0
+    fail_msg: >-
+      No HAProxy backends — set haproxy_backend_group or add k3s_first_leader /
+      k3s_additional_leaders hosts.
+
+- name: Install HAProxy (RHEL family)
+  ansible.builtin.include_tasks: install-redhat.yml
+  when: ansible_os_family == 'RedHat'
+
+- name: Install HAProxy (Debian family)
+  ansible.builtin.include_tasks: install-debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Allow HAProxy outbound connections (SELinux)
+  ansible.builtin.command: setsebool -P haproxy_connect_any 1
+  when:
+    - haproxy_selinux_connect_any | bool
+    - ansible_os_family == 'RedHat'
+    - ansible_selinux is defined
+    - ansible_selinux.status == 'enabled'
+  changed_when: false
+
+- name: Deploy HAProxy configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: "{{ haproxy_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "{{ haproxy_config_validate }}"
+  notify: Restart haproxy
+
+- name: Apply HAProxy configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start HAProxy
+  ansible.builtin.service:
+    name: "{{ haproxy_service }}"
+    state: started
+    enabled: true
+
+- name: Wait for HAProxy to listen on K3s API port
+  ansible.builtin.wait_for:
+    port: "{{ k3s_api_port }}"
+    host: 127.0.0.1
+    timeout: 60

@@ -1,0 +1,21 @@
+---
+k3s_api_port: 6443
+
+haproxy_package: haproxy
+haproxy_service: haproxy
+haproxy_config_path: /etc/haproxy/haproxy.cfg
+haproxy_config_validate: haproxy -c -f %s
+
+# SELinux: allow HAProxy to reach K3s API on leader nodes (RHEL family only)
+haproxy_selinux_connect_any: true
+
+# Optional inventory group for backends (e.g. talos_controlplane). Empty = K3s leaders.
+haproxy_backend_group: ""
+
+# Enable TCP health checks after the Kubernetes API is up on backends
+haproxy_backend_health_check: false
+
+# Native Prometheus exporter (HAProxy 2.x+) on a dedicated HTTP frontend.
+# Scraped by Prometheus at http://<lb_ip>:<port>/metrics; /stats serves the UI.
+haproxy_expose_metrics: true
+haproxy_metrics_port: 8404

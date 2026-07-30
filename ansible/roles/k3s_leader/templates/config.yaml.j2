@@ -1,0 +1,33 @@
+# Managed by Ansible — K3s server
+node-ip: {{ ansible_host }}
+advertise-address: {{ ansible_host }}
+{% if k3s_leader_mode == 'first' %}
+cluster-init: true
+{% else %}
+server: {{ k3s_first_leader_url }}
+{% endif %}
+
+cluster-cidr: {{ k3s_cluster_cidr }}
+service-cidr: {{ k3s_service_cidr }}
+cluster-domain: {{ k3s_cluster_domain }}
+
+disable:
+{% for component in k3s_disable_components %}
+  - {{ component }}
+{% endfor %}
+
+etcd-snapshot-schedule-cron: "{{ k3s_etcd_snapshot_schedule }}"
+etcd-snapshot-retention: {{ k3s_etcd_snapshot_retention }}
+
+node-label:
+  - "{{ k3s_node_label_domain }}/role={{ k3s_control_plane_node_role }}"
+  - "{{ k3s_node_label_domain }}/env={{ env_id }}"
+
+tls-san:
+{% for san in k3s_tls_sans %}
+  - {{ san }}
+{% endfor %}
+{% if k3s_kube_proxy_mode | default('') | length > 0 %}
+kube-proxy-arg:
+  - "proxy-mode={{ k3s_kube_proxy_mode }}"
+{% endif %}

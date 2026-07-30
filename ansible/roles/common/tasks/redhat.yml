@@ -1,0 +1,12 @@
+---
+- name: Install baseline packages
+  ansible.builtin.dnf:
+    name: "{{ common_baseline_packages_redhat }}"
+    state: present
+    update_cache: true
+
+- name: Enable chronyd
+  ansible.builtin.service:
+    name: "{{ common_time_service_redhat }}"
+    state: started
+    enabled: true

@@ -1,0 +1,6 @@
+# MetalLB L2 — fixed LAN IP for Gateway API LoadBalancer (pool applied separately)
+controller:
+  logLevel: info
+
+speaker:
+  logLevel: info
