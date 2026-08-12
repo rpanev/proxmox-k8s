@@ -1,0 +1,74 @@
+# Grafana Loki — homelab SingleBinary mode (filesystem on Longhorn).
+# Log shippers: Promtail via Ansible on every VM (leaders, workers, LB).
+# Retention overridden at deploy from LOKI_RETENTION in secrets.env.
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+    filesystem:
+      chunks_directory: /var/loki/chunks
+      rules_directory: /var/loki/rules
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 168h
+    max_query_length: 721h
+
+singleBinary:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  persistence:
+    enabled: true
+    storageClass: longhorn
+    size: 20Gi
+
+# Disable scalable-mode components (SingleBinary only).
+write:
+  replicas: 0
+read:
+  replicas: 0
+backend:
+  replicas: 0
+
+# NodePort so Ansible-installed Promtail on VMs (outside the cluster) can push logs.
+gateway:
+  enabled: true
+  replicas: 1
+  service:
+    type: NodePort
+    nodePort: 31080
+
+minio:
+  enabled: false
+
+# Memcached caches — overkill for SingleBinary homelab; caused deploy timeouts.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
+test:
+  enabled: false
+lokiCanary:
+  enabled: false

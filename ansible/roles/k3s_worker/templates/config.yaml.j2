@@ -1,0 +1,10 @@
+# Managed by Ansible — K3s agent
+node-ip: {{ ansible_host }}
+
+node-label:
+  - "{{ k3s_node_label_domain }}/role={{ k3s_worker_node_role }}"
+  - "{{ k3s_node_label_domain }}/env={{ env_id }}"
+{% if k3s_kube_proxy_mode | default('') | length > 0 %}
+kube-proxy-arg:
+  - "proxy-mode={{ k3s_kube_proxy_mode }}"
+{% endif %}

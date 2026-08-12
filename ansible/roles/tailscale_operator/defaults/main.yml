@@ -1,0 +1,20 @@
+---
+tailscale_enabled: false
+tailscale_namespace: tailscale
+tailscale_helm_repo_url: https://pkgs.tailscale.com/helmcharts
+tailscale_helm_release: tailscale-operator
+tailscale_helm_chart: tailscale/tailscale-operator
+tailscale_helm_wait_timeout: 10m
+
+# Deploy host paths — operator runs via kubectl/helm only, no Tailscale client on VMs
+homelab_root: "{{ lookup('env', 'HOMELAB_ROOT') | default('/opt/panev.cloud/homelab', true) }}"
+operator_kubeconfig_path: "{{ homelab_root }}/kubeconfigs/{{ env_id | default('homelab') }}.kubeconfig"
+
+tailscale_login_server: ""
+tailscale_api_server_proxy: false
+tailscale_tailnet: ""
+tailscale_proxy_tag: ""
+tailscale_subnet_router_enabled: true
+tailscale_connector_name: ""
+tailscale_connector_hostname: ""
+tailscale_advertise_routes: []

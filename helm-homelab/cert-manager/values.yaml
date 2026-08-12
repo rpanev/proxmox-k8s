@@ -1,0 +1,16 @@
+# cert-manager — Let's Encrypt via Cloudflare DNS-01
+installCRDs: true
+
+# Expose metrics + ServiceMonitor so Prometheus scrapes cert-manager (Grafana 11001)
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true
+
+webhook:
+  timeoutSeconds: 30
+
+# Use public recursive resolvers for DNS-01 self-check (Cloudflare API can be faster than propagation).
+extraArgs:
+  - --dns01-recursive-nameservers-only
+  - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53

@@ -1,0 +1,13 @@
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  name: {{ tailscale_connector_name_effective }}
+spec:
+  hostname: {{ tailscale_connector_hostname_effective }}
+  tags:
+    - {{ tailscale_proxy_tag_effective }}
+  subnetRouter:
+    advertiseRoutes:
+{% for route in tailscale_advertise_routes_effective %}
+      - "{{ route }}"
+{% endfor %}

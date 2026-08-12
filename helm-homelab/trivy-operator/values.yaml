@@ -1,0 +1,42 @@
+# Trivy Operator — cluster vulnerability / misconfig scanning (Aqua Security).
+# Metrics → Prometheus ServiceMonitor for Grafana dashboard 16337.
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  honorLabels: true
+
+operator:
+  metricsFindingsEnabled: true
+  # Built-in Trivy server avoids per-scan Job pulling the DB on every pod.
+  builtInTrivyServer: true
+
+trivy:
+  slow: true
+  ignoreUnfixed: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# node-collector runs as a per-node Job with hostname nodeSelector.
+# Control-plane nodes are tainted — without tolerations the job stays Pending.
+nodeCollector:
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+
+scanJobTolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule

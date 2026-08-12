@@ -1,0 +1,10 @@
+---
+# Promtail log shippers — run after Loki is deployed (deploy-infra.sh calls this).
+# Requires group_vars/all/loki.yml (loki_promtail_enabled, loki_push_host).
+
+- name: Promtail on all homelab VMs (LB + K3s nodes)
+  hosts: k8s_lb:k3s_first_leader:k3s_additional_leaders:k3s_workers
+  gather_facts: true
+  roles:
+    - role: promtail
+      when: loki_promtail_enabled | default(false) | bool

@@ -1,0 +1,31 @@
+---
+- name: Validate supported OS
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: validate-os
+
+- name: Install node_exporter (Debian family)
+  ansible.builtin.apt:
+    name: "{{ node_exporter_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Install node_exporter (RHEL family)
+  ansible.builtin.dnf:
+    name: golang-github-prometheus-node-exporter
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Enable and start node_exporter
+  ansible.builtin.service:
+    name: "{{ node_exporter_service }}"
+    state: started
+    enabled: true
+
+- name: Wait for node_exporter to listen
+  ansible.builtin.wait_for:
+    port: "{{ node_exporter_port }}"
+    host: 127.0.0.1
+    timeout: 60

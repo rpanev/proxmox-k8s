@@ -1,0 +1,34 @@
+# tailscale-exporter — Tailscale API metrics for Grafana dashboard 24177.
+# OAuth creds + tailnet injected from a Secret created at deploy (see common.sh).
+env:
+  - name: TAILSCALE_TAILNET
+    valueFrom:
+      secretKeyRef:
+        name: tailscale-exporter-oauth
+        key: tailnet
+  - name: TAILSCALE_OAUTH_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: tailscale-exporter-oauth
+        key: client-id
+  - name: TAILSCALE_OAUTH_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: tailscale-exporter-oauth
+        key: client-secret
+
+serviceMonitor:
+  enabled: true
+  scrapeInterval: 60s
+  # Dashboard 24177 groups by tailscale_machine — label the exporter instance.
+  relabelings:
+    - action: replace
+      replacement: tailscale-exporter
+      targetLabel: tailscale_machine
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

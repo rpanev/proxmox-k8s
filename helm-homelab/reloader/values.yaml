@@ -1,0 +1,12 @@
+# Reloader — restart workloads when ConfigMap/Secret changes
+reloader:
+  watchGlobally: true
+  reloadOnCreate: true
+  syncAfterRestart: true
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 64Mi

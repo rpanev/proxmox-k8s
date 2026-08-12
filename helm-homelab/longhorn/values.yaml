@@ -1,0 +1,20 @@
+# Longhorn — homelab (workers: 32G OS + 50G data disk at LONGHORN_MOUNT_PATH)
+defaultSettings:
+  defaultDataPath: /var/mnt/longhorn-data
+  defaultReplicaCount: "3"
+  storageMinimalAvailablePercentage: "10"
+
+persistence:
+  defaultClass: true
+  defaultClassReplicaCount: 3
+
+longhornUI:
+  replicas: 1
+
+ingress:
+  enabled: true
+  ingressClassName: tailscale
+  host: longhorn
+  path: /
+  pathType: Prefix
+  tls: true

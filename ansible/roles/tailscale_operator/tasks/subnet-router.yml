@@ -1,0 +1,46 @@
+---
+- name: Deploy Tailscale subnet router Connector
+  when: tailscale_subnet_router_enabled | bool
+  block:
+    - name: Require advertised subnet routes
+      ansible.builtin.assert:
+        that:
+          - tailscale_advertise_routes_effective | length > 0
+        fail_msg: homelab_network_cidr missing — regenerate inventory from Terraform.
+
+    - name: Apply Tailscale subnet router Connector
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl apply -f -
+      args:
+        executable: /bin/bash
+        stdin: "{{ lookup('template', 'connector-subnet-router.yaml.j2') }}"
+      environment:
+        KUBECONFIG: "{{ operator_kubeconfig_path }}"
+      register: connector_apply
+
+    - name: Wait for Tailscale Connector to advertise routes
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for i in $(seq 1 60); do
+          routes="$(kubectl get connector {{ tailscale_connector_name_effective }} -o jsonpath='{.status.subnetRoutes}' 2>/dev/null || true)"
+          if [[ -n "${routes}" && "${routes}" != "null" ]]; then
+            echo "${routes}"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "timeout waiting for connector subnet routes" >&2
+        kubectl describe connector {{ tailscale_connector_name_effective }} || true
+        exit 1
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ operator_kubeconfig_path }}"
+      changed_when: false
+
+    - name: Subnet router summary
+      ansible.builtin.debug:
+        msg:
+          - "Subnet router Connector: {{ tailscale_connector_name_effective }}"
+          - "Advertised routes: {{ tailscale_advertise_routes_effective | join(', ') }}"
