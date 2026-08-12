@@ -35,6 +35,14 @@ Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
 LONGHORN_ENABLED / KASTEN_ENABLED
   └── SNAPSHOT_CONTROLLER_ENABLED   (CSI VolumeSnapshot CRDs — default on with either)
 
+KASTEN_ENABLED
+  ├── LONGHORN_ENABLED              (PVC data)
+  ├── SNAPSHOT_CONTROLLER_ENABLED   (VolumeSnapshotClass longhorn, type=snap)
+  └── KASTEN_NFS_*                  (Location Profile export; ≠ Proxmox SSD-storage)
+
+CEPH_STORAGE=false + PROXMOX_SHARED_STORAGE
+  └── PROXMOX_DATASTORE_ID          (e.g. SSD-storage — Proxmox VM disks / live migrate)
+
 GATEWAY_ENABLED
   └── EXTERNAL_DNS_ENABLED   (HTTPRoute → Cloudflare A records)
 
@@ -51,6 +59,8 @@ TAILSCALE_ENABLED
   └── TAILSCALE_EXPORTER_ENABLED (also needs Prometheus)
 ```
 
+Backup layers (Proxmox / Longhorn / Kasten): [../backup.md](../backup.md).
+
 ## Where logic lives
 
 | Concern | Location |
@@ -59,5 +69,6 @@ TAILSCALE_ENABLED
 | Helm install | `deploy_*` functions in `common.sh` |
 | Values | `helm-homelab/<component>/values.yaml` |
 | HTTPRoutes | `helm-homelab/gateway/manifests/httproutes/` |
+| Kasten NFS + policies | `helm-homelab/kasten/manifests/`, `apply_kasten_*` in `common.sh` |
 
 Also listed in: [../feature-flags.md](../feature-flags.md).

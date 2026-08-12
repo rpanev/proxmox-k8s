@@ -53,5 +53,6 @@ cd terrafrom/talos-linux && terraform output
 ## Related
 
 - [../proxmox.md](../proxmox.md)
+- [../backup.md](../backup.md) — Proxmox NFS vs Kasten NFS vs Longhorn
 - [longhorn.md](longhorn.md) — Longhorn is **in-cluster** storage; Ceph/NFS here is for Proxmox VM disks
 - [kasten.md](kasten.md) — app backup (separate from Proxmox datastore)

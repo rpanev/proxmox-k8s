@@ -63,6 +63,20 @@ kubectl get httproute -A
 
 Service URLs: `https://<hostname>.<GATEWAY_DOMAIN>` (when Gateway is enabled).
 
+### Optional: Kasten backup
+
+If `KASTEN_ENABLED=true` (and `VELERO_ENABLED=false`):
+
+```bash
+kubectl get policies.config.kio.kasten.io -n kasten-io
+kubectl get profiles.config.kio.kasten.io -n kasten-io
+# UI: https://kasten.<GATEWAY_DOMAIN>/k10/
+```
+
+Longhorn is PVC storage; Kasten is backup — see [backup.md](backup.md).
+Apps stay Non-Compliant until the first successful policy run (02:00 by default
+or Run Once in the UI).
+
 ## 6. Tear down
 
 ```bash
@@ -74,5 +88,6 @@ Keeps `secrets.env`. Removes inventories, kubeconfigs, generated tfvars, etc.
 ## Next
 
 - [architecture.md](architecture.md) — what got created
+- [backup.md](backup.md) — Proxmox NFS / Longhorn / Kasten
 - [toggles/](toggles/README.md) — enable optional platform pieces
 - [cloudflare-gateway.md](cloudflare-gateway.md) — if TLS/DNS fails

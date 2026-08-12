@@ -10,6 +10,7 @@ how components fit together.
 |-----|-------------|
 | [getting-started.md](getting-started.md) | First deploy checklist |
 | [architecture.md](architecture.md) | Pipeline, VMs, IPs, screenshots |
+| [backup.md](backup.md) | **Longhorn vs Kasten vs Proxmox NFS** |
 | [toggles/README.md](toggles/README.md) | **Platform toggles** — one page each |
 | [../README.md](../README.md) | Project overview + architecture diagram |
 
@@ -19,9 +20,20 @@ how components fit together.
 |-----|-------------|
 | [proxmox.md](proxmox.md) | Proxmox API token, templates, pool |
 | [platform-os-bg.md](platform-os-bg.md) | `--os=linux\|talos` (Bulgarian) |
-| [platform.md](platform.md) | Hostnames, sizing, Grafana password |
+| [platform.md](platform.md) | Hostnames, sizing, Grafana / Kasten |
 | [cloudflare-gateway.md](cloudflare-gateway.md) | Gateway API, MetalLB, DNS-01, Universal SSL |
 | [k3s-customization-plan.md](k3s-customization-plan.md) | K3s hardening roadmap |
+
+## Backup (app data)
+
+| Doc | Description |
+|-----|-------------|
+| [backup.md](backup.md) | Layers overview (Proxmox / Longhorn / K10) |
+| [toggles/kasten.md](toggles/kasten.md) | Kasten K10 + NFS Location + policies |
+| [toggles/snapshot-controller.md](toggles/snapshot-controller.md) | CSI VolumeSnapshot CRDs (`type: snap`) |
+| [toggles/longhorn.md](toggles/longhorn.md) | In-cluster PVC storage |
+| [toggles/velero.md](toggles/velero.md) | Optional S3 alternative (disable when using Kasten) |
+| [toggles/ceph-storage.md](toggles/ceph-storage.md) | Proxmox VM disks on Ceph or shared NFS |
 
 ## Images
 

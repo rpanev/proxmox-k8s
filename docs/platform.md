@@ -9,6 +9,7 @@ WORKER_DATA_DISK_GB=30
 LONGHORN_MOUNT_PATH=/var/mnt/longhorn-data
 LONGHORN_DATA_DISK_FSTYPE=xfs
 LONGHORN_HOSTNAME=longhorn
+KASTEN_HOSTNAME=kasten
 GRAFANA_HOSTNAME=grafana
 PROMETHEUS_HOSTNAME=prometheus
 GRAFANA_ADMIN_PASSWORD=homelab-grafana-test-2026
@@ -30,6 +31,7 @@ creates the matching Cloudflare A record. See
 |----------|-----------------------------------------------------------|
 | `ARGOCD_HOSTNAME` | `argocd.homelab.panev.cloud` |
 | `LONGHORN_HOSTNAME` | `longhorn.homelab.panev.cloud` |
+| `KASTEN_HOSTNAME` | `kasten.homelab.panev.cloud/k10/` |
 | `GRAFANA_HOSTNAME` | `grafana.homelab.panev.cloud` |
 | `PROMETHEUS_HOSTNAME` | `prometheus.homelab.panev.cloud` |
 
@@ -40,6 +42,9 @@ creates the matching Cloudflare A record. See
 | `WORKER_DATA_DISK_GB` | Size (GB) of the dedicated data disk attached to each worker VM. Longhorn uses this disk, not the OS disk. |
 | `LONGHORN_MOUNT_PATH` | Where the data disk is mounted on the worker and where Longhorn stores replicas. |
 | `LONGHORN_DATA_DISK_FSTYPE` | Filesystem for that disk (`xfs` or `ext4`). |
+
+Longhorn is **runtime** PVC storage. App **backups** are Kasten (or Velero) —
+see [backup.md](backup.md).
 
 ## Monitoring (Prometheus / Grafana)
 
@@ -76,5 +81,7 @@ Defined in other groups but conceptually part of sizing:
 
 - `LEADER_COUNT`, `WORKER_COUNT` (cluster size) — number of control-plane and
   worker VMs to clone. See `secrets.env`.
-- Velero backup retention (`VELERO_BACKUP_TTL`, `VELERO_SCHEDULE_CRON`) — see the
-  Velero section in `secrets.env`.
+- Kasten NFS / policy (`KASTEN_NFS_*`, `KASTEN_POLICY_*`, `KASTEN_DR_POLICY_*`) —
+  see [toggles/kasten.md](toggles/kasten.md) and [backup.md](backup.md).
+- Velero backup retention (`VELERO_BACKUP_TTL`, `VELERO_SCHEDULE_CRON`) — see
+  [toggles/velero.md](toggles/velero.md) (keep off when Kasten is enabled).

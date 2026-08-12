@@ -60,9 +60,9 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 
 | Toggle | Doc |
 |--------|-----|
-| `CEPH_STORAGE` | [ceph-storage](docs/toggles/ceph-storage.md) |
-| `LONGHORN_ENABLED` | [longhorn](docs/toggles/longhorn.md) |
-| `SNAPSHOT_CONTROLLER_ENABLED` | [snapshot-controller](docs/toggles/snapshot-controller.md) |
+| `CEPH_STORAGE` / `PROXMOX_SHARED_STORAGE` | [ceph-storage](docs/toggles/ceph-storage.md) (VM disks: Ceph or NFS `SSD-storage`) |
+| `LONGHORN_ENABLED` | [longhorn](docs/toggles/longhorn.md) (PVC storage — not backups) |
+| `SNAPSHOT_CONTROLLER_ENABLED` | [snapshot-controller](docs/toggles/snapshot-controller.md) (CSI snaps for Kasten) |
 | `GATEWAY_ENABLED` | [gateway](docs/toggles/gateway.md) |
 | `EXTERNAL_DNS_ENABLED` | [external-dns](docs/toggles/external-dns.md) |
 | `PROMETHEUS_ENABLED` | [prometheus](docs/toggles/prometheus.md) |
@@ -72,8 +72,8 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 | `ARGOCD_BOOTSTRAP_ENABLED` | [argocd-bootstrap](docs/toggles/argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets](docs/toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader](docs/toggles/reloader.md) |
-| `VELERO_ENABLED` | [velero](docs/toggles/velero.md) |
-| `KASTEN_ENABLED` | [kasten](docs/toggles/kasten.md) |
+| `VELERO_ENABLED` | [velero](docs/toggles/velero.md) (S3; keep off if using Kasten) |
+| `KASTEN_ENABLED` | [kasten](docs/toggles/kasten.md) (app backup → NFS; see [docs/backup.md](docs/backup.md)) |
 | `DATADOG_ENABLED` | [datadog](docs/toggles/datadog.md) |
 | `TAILSCALE_ENABLED` | [tailscale](docs/toggles/tailscale.md) |
 | `TAILSCALE_EXPORTER_ENABLED` | [tailscale-exporter](docs/toggles/tailscale-exporter.md) |
@@ -98,11 +98,23 @@ export KUBECONFIG=kubeconfigs/<ENV_ID>.kubeconfig
 kubectl get nodes
 ```
 
+With Gateway (`GATEWAY_DOMAIN=homelab.panev.cloud`):
+
+| Service | URL |
+|---------|-----|
+| Grafana | `https://grafana.homelab.panev.cloud` |
+| Longhorn | `https://longhorn.homelab.panev.cloud` |
+| Kasten | `https://kasten.homelab.panev.cloud/k10/` |
+| Argo CD | `https://argocd.homelab.panev.cloud` |
+
 Helm-only re-run:
 
 ```bash
 ./deploy-infra.sh --helm-only --os=talos
 ```
+
+**Backup:** Longhorn stores PVC data; Kasten backs apps up to NAS NFS. They are
+different products — see [docs/backup.md](docs/backup.md).
 
 ## Documentation
 
@@ -111,6 +123,7 @@ Helm-only re-run:
 | [docs/README.md](docs/README.md) | Documentation index |
 | [docs/getting-started.md](docs/getting-started.md) | Step-by-step first deploy |
 | [docs/architecture.md](docs/architecture.md) | Architecture and IP layout |
+| [docs/backup.md](docs/backup.md) | Longhorn vs Kasten vs Proxmox NFS |
 | [docs/toggles/](docs/toggles/README.md) | One page per platform toggle |
 | [docs/proxmox.md](docs/proxmox.md) | Proxmox API + templates |
 | [docs/platform.md](docs/platform.md) | Hostnames and sizing |

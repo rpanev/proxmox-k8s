@@ -34,11 +34,26 @@ Five hosts: `node1` … `node5`. VM placement is set per stack in
 `terrafrom/*/terraform.tfvars`. With `CEPH_STORAGE=true`, VM disks use
 `ceph-prod` (or your `ceph_datastore_id`). With `CEPH_STORAGE=false`, disks use
 `PROXMOX_DATASTORE_ID` (e.g. NFS `SSD-storage`) and stay multi-node when
-`PROXMOX_SHARED_STORAGE=true`.
+`PROXMOX_SHARED_STORAGE=true` (live migration / HA-friendly).
+
+## Storage vs backup (separate concerns)
+
+| Layer | Role |
+|-------|------|
+| Proxmox datastore (`SSD-storage` / Ceph) | VM disks on the hypervisor |
+| Longhorn | PVC runtime storage inside the cluster |
+| Kasten K10 (+ snapshot-controller) | App backup → NAS NFS export (`KASTEN_NFS_*`) |
+
+Full write-up: [backup.md](backup.md). Toggles: [kasten](toggles/kasten.md),
+[longhorn](toggles/longhorn.md), [snapshot-controller](toggles/snapshot-controller.md).
 
 ## Platform stack (Helm)
 
 Controlled by toggles in `secrets.env` — see [toggles/](toggles/README.md).
+
+Typical critical path when Kasten is on:
+
+`MetalLB → snapshot-controller → Longhorn → … → Kasten (after parallel Helm on Talos)`.
 
 ## Screenshots
 
@@ -51,5 +66,6 @@ Controlled by toggles in `secrets.env` — see [toggles/](toggles/README.md).
 ## Related
 
 - [getting-started.md](getting-started.md)
+- [backup.md](backup.md)
 - [platform-os-bg.md](platform-os-bg.md)
 - [../summary.md](../summary.md)
