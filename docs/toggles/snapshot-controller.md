@@ -39,3 +39,4 @@ kubectl get volumesnapshotclass
 
 - [kasten.md](kasten.md) — uses this for PVC snapshots
 - [longhorn.md](longhorn.md) — CSI driver `driver.longhorn.io`
+- [../backup.md](../backup.md) — why `type: snap` (no Longhorn Backup Target)

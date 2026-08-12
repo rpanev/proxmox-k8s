@@ -21,9 +21,13 @@ LETSENCRYPT_STAGING=false
 1. MetalLB IP pool → `GATEWAY_LB_IP`
 2. Envoy Gateway + Gateway / Certificate manifests
 3. cert-manager ClusterIssuer (Cloudflare DNS-01)
-4. HTTPRoutes for platform UIs (Grafana, Argo CD, Longhorn, …)
+4. HTTPRoutes for platform UIs (Grafana, Argo CD, Longhorn, Kasten, …)
 
 Full TLS/DNS detail: [../cloudflare-gateway.md](../cloudflare-gateway.md).
+
+When `KASTEN_ENABLED=true`, deploy applies
+`helm-homelab/gateway/manifests/httproutes/kasten.yaml.tpl` →
+`https://kasten.<GATEWAY_DOMAIN>/k10/`.
 
 ## Configuration
 

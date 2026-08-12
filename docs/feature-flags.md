@@ -40,3 +40,5 @@ Fallback when `--os` is omitted: `TALOS_ENABLED`. See [platform-os-bg.md](platfo
 | `TRIVY_OPERATOR_ENABLED` | [toggles/trivy-operator.md](toggles/trivy-operator.md) |
 
 Dependency chains and deploy locations: [toggles/README.md](toggles/README.md).
+
+Storage vs backup (Longhorn / Kasten / Proxmox NFS): [backup.md](backup.md).

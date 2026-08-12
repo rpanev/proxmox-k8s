@@ -25,6 +25,11 @@ LONGHORN_HOSTNAME=longhorn
 Longhorn UI **Nodes** = workers with a data disk (e.g. 3), not Proxmox host count.
 **Volumes** = PVC count using the `longhorn` StorageClass.
 
+This is **not** the backup product. Kasten (K10) snapshots Longhorn volumes via
+CSI and exports to NAS NFS. You do **not** need a Longhorn Backup Target when
+VolumeSnapshotClass uses `parameters.type: snap` (default in this repo).
+See [../backup.md](../backup.md).
+
 ## Configuration
 
 | Variable | Description |
@@ -50,5 +55,8 @@ kubectl get nodes.longhorn.io -n longhorn-system
 
 ## Related
 
+- [../backup.md](../backup.md) — Longhorn vs Kasten vs Proxmox NFS
+- [kasten.md](kasten.md) — app backup / export (uses CSI snapshots of Longhorn PVCs)
+- [snapshot-controller.md](snapshot-controller.md) — VolumeSnapshot CRDs
 - [../platform.md](../platform.md) — sizing
 - [prometheus.md](prometheus.md) / [loki.md](loki.md) — common PVC consumers
