@@ -23,7 +23,10 @@ Creates VolumeSnapshotClass `longhorn` with:
 ```yaml
 annotations:
   k10.kasten.io/is-snapshot-class: "true"
+parameters:
+  type: snap   # local Longhorn snap — no Backup Target; Kasten exports to NFS
 ```
+
 ## Check
 
 ```bash

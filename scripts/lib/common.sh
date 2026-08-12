@@ -2835,6 +2835,7 @@ deploy_snapshot_controller() {
     --timeout=120s >/dev/null
 
   # Longhorn CSI class for Kasten (cannot be in Helm values until CRDs exist).
+  # type=snap: local snapshot — does not require Longhorn Backup Target (Kasten exports to NFS).
   kubectl apply -f - <<'EOF'
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
@@ -2847,8 +2848,10 @@ metadata:
     snapshot.storage.kubernetes.io/is-default-class: "true"
 driver: driver.longhorn.io
 deletionPolicy: Delete
+parameters:
+  type: snap
 EOF
-  echo "    VolumeSnapshot CRDs Ready; VolumeSnapshotClass longhorn annotated for Kasten"
+  echo "    VolumeSnapshot CRDs Ready; VolumeSnapshotClass longhorn (type=snap) for Kasten"
 }
 
 # After Prometheus Operator CRDs exist — enable ServiceMonitor in the same deploy run.
