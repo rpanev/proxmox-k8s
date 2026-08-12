@@ -22,6 +22,7 @@ Fallback when `--os` is omitted: `TALOS_ENABLED`. See [platform-os-bg.md](platfo
 |------|-----|
 | `CEPH_STORAGE` | [toggles/ceph-storage.md](toggles/ceph-storage.md) |
 | `LONGHORN_ENABLED` | [toggles/longhorn.md](toggles/longhorn.md) |
+| `SNAPSHOT_CONTROLLER_ENABLED` | [toggles/snapshot-controller.md](toggles/snapshot-controller.md) |
 | `GATEWAY_ENABLED` | [toggles/gateway.md](toggles/gateway.md) |
 | `EXTERNAL_DNS_ENABLED` | [toggles/external-dns.md](toggles/external-dns.md) |
 | `PROMETHEUS_ENABLED` | [toggles/prometheus.md](toggles/prometheus.md) |
@@ -32,6 +33,7 @@ Fallback when `--os` is omitted: `TALOS_ENABLED`. See [platform-os-bg.md](platfo
 | `SEALED_SECRETS_ENABLED` | [toggles/sealed-secrets.md](toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [toggles/reloader.md](toggles/reloader.md) |
 | `VELERO_ENABLED` | [toggles/velero.md](toggles/velero.md) |
+| `KASTEN_ENABLED` | [toggles/kasten.md](toggles/kasten.md) |
 | `DATADOG_ENABLED` | [toggles/datadog.md](toggles/datadog.md) |
 | `TAILSCALE_ENABLED` | [toggles/tailscale.md](toggles/tailscale.md) |
 | `TAILSCALE_EXPORTER_ENABLED` | [toggles/tailscale-exporter.md](toggles/tailscale-exporter.md) |

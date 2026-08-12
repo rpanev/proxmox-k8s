@@ -2,7 +2,7 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
   count = var.controlplane_count
 
   name      = var.controlplane_count == 1 ? "${var.env_id}-leader" : format("${var.env_id}-leader-%02d", count.index + 1)
-  node_name = var.ceph ? local.controlplane_node_names[count.index] : var.target_node
+  node_name = local.spread_nodes ? local.controlplane_node_names[count.index] : var.target_node
   vm_id     = var.controlplane_vmid_start + count.index
   tags      = concat(var.vm_tags, ["leader", "controlplane"])
   pool_id   = var.env_id
@@ -20,7 +20,7 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
     vm_id        = var.template_vm_id
     node_name    = var.template_node
     full         = true
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
   }
 
   timeout_clone  = 1800
@@ -47,7 +47,7 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
   }
 
   disk {
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
     interface    = "scsi0"
     size         = var.vm_disk_gb
     discard      = "on"
@@ -63,7 +63,7 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
   # Static IP via Proxmox cloud-init (Talos reads nocloud metadata).
   # Machine config / cluster bootstrap comes later (talosctl).
   initialization {
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
     upgrade      = var.cloud_init_upgrade
 
     dns {

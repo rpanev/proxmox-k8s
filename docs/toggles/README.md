@@ -12,6 +12,7 @@ Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
 |------|------|
 | `CEPH_STORAGE` | [ceph-storage.md](ceph-storage.md) |
 | `LONGHORN_ENABLED` | [longhorn.md](longhorn.md) |
+| `SNAPSHOT_CONTROLLER_ENABLED` | [snapshot-controller.md](snapshot-controller.md) |
 | `GATEWAY_ENABLED` | [gateway.md](gateway.md) |
 | `EXTERNAL_DNS_ENABLED` | [external-dns.md](external-dns.md) |
 | `PROMETHEUS_ENABLED` | [prometheus.md](prometheus.md) |
@@ -22,6 +23,7 @@ Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets.md](sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader.md](reloader.md) |
 | `VELERO_ENABLED` | [velero.md](velero.md) |
+| `KASTEN_ENABLED` | [kasten.md](kasten.md) |
 | `DATADOG_ENABLED` | [datadog.md](datadog.md) |
 | `TAILSCALE_ENABLED` | [tailscale.md](tailscale.md) |
 | `TAILSCALE_EXPORTER_ENABLED` | [tailscale-exporter.md](tailscale-exporter.md) |
@@ -30,6 +32,9 @@ Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
 ## Dependency chains
 
 ```
+LONGHORN_ENABLED / KASTEN_ENABLED
+  └── SNAPSHOT_CONTROLLER_ENABLED   (CSI VolumeSnapshot CRDs — default on with either)
+
 GATEWAY_ENABLED
   └── EXTERNAL_DNS_ENABLED   (HTTPRoute → Cloudflare A records)
 

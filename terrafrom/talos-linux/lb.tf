@@ -19,7 +19,7 @@ resource "proxmox_virtual_environment_vm" "talos_lb" {
     full         = true
     # Template Debian13-cloud (LB HAProxy) lives on node1; Talos image is separate (template_node).
     # Without target datastore, cross-node full clone keeps NFStorage and disk resize fails.
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
   }
 
   timeout_clone  = 1800
@@ -45,7 +45,7 @@ resource "proxmox_virtual_environment_vm" "talos_lb" {
   }
 
   disk {
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
     interface    = "scsi0"
     size         = var.lb_disk_gb
     discard      = "on"
@@ -59,7 +59,7 @@ resource "proxmox_virtual_environment_vm" "talos_lb" {
   }
 
   initialization {
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
     upgrade      = var.cloud_init_upgrade
 
     dns {

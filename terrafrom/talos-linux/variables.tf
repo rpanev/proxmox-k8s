@@ -51,23 +51,31 @@ variable "template_node" {
 
 # ===== Storage =====
 variable "ceph" {
-  type    = bool
-  default = true
+  type        = bool
+  default     = false
+  description = "Use Ceph RBD datastore (ceph_datastore_id) for VM disks"
 }
 
 variable "ceph_datastore_id" {
   type    = string
-  default = "Ceph_HomeLab"
+  default = "ceph-prod"
+}
+
+variable "shared_storage" {
+  type        = bool
+  default     = true
+  description = "Spread VMs across proxmox_nodes when using shared NFS (e.g. SSD-storage)"
 }
 
 variable "local_datastore_id" {
-  type    = string
-  default = "local-lvm"
+  type        = string
+  default     = "SSD-storage"
+  description = "Proxmox datastore when ceph = false (NFS SSD-storage or local-lvm)"
 }
 
 variable "target_node" {
   type        = string
-  description = "Single Proxmox node when ceph = false"
+  description = "Single Proxmox node when neither ceph nor shared_storage"
   default     = "node1"
 }
 

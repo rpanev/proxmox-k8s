@@ -1,0 +1,17 @@
+# Veeam Kasten (K10) — Helm values for homelab
+# NFS Location Profile: deploy_kasten() → manifests/nfs-location.yaml (KASTEN_NFS_*)
+# Grafana dashboard: gnetId 21065 (prometheus values)
+
+global:
+  persistence:
+    # Overridden by --set from KASTEN_STORAGE_CLASS (default longhorn-1r)
+    storageClass: longhorn-1r
+    size: 5Gi
+
+# Prefer cluster Prometheus + Grafana (kube-prometheus-stack) over K10's Grafana
+grafana:
+  enabled: false
+
+auth:
+  basicAuth:
+    enabled: false

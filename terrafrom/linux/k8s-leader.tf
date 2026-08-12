@@ -18,7 +18,7 @@ resource "proxmox_virtual_environment_vm" "k8s_leader" {
     vm_id        = var.template_vm_id
     node_name    = var.template_node
     full         = true
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
   }
 
   timeout_clone  = 1800
@@ -51,7 +51,7 @@ resource "proxmox_virtual_environment_vm" "k8s_leader" {
   }
 
   disk {
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
     interface    = "scsi0"
     size         = var.vm_disk_gb
     discard      = "on"
@@ -65,7 +65,7 @@ resource "proxmox_virtual_environment_vm" "k8s_leader" {
   }
 
   initialization {
-    datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    datastore_id = local.datastore_id
     upgrade      = var.cloud_init_upgrade
 
     dns {

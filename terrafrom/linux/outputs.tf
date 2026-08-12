@@ -80,7 +80,7 @@ output "cluster_info" {
       count = var.worker_count
       ips   = [for i in range(var.worker_count) : "${var.ip_base}.${var.worker_ip_start + i}"]
     }
-    storage = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+    storage = local.datastore_id
   }
 }
 

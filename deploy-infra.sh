@@ -28,11 +28,14 @@ Platform OS (Terraform stack):
   Falls back to secrets.env TALOS_ENABLED when --os is omitted.
 
 Platform toggles (secrets.env — true/false):
-  CEPH_STORAGE           Proxmox VM disks on Ceph (false → local-lvm)
+  CEPH_STORAGE           Proxmox VM disks on Ceph (false → PROXMOX_DATASTORE_ID / NFS)
+  PROXMOX_SHARED_STORAGE Spread VMs across nodes when using shared NFS (default true)
+  PROXMOX_DATASTORE_ID   Datastore when CEPH_STORAGE=false (default SSD-storage)
   TAILSCALE_ENABLED      Tailscale operator + Ingress (optional — remote VPN access)
   GATEWAY_ENABLED        Gateway API + MetalLB + cert-manager + Cloudflare TLS (home LAN)
   EXTERNAL_DNS_ENABLED   Cloudflare A records for HTTPRoutes → GATEWAY_LB_IP (default true)
   LONGHORN_ENABLED       Worker data disks + Longhorn Helm
+  SNAPSHOT_CONTROLLER_ENABLED  CSI VolumeSnapshot CRDs + controller (Kasten/Longhorn)
   DATADOG_ENABLED        Datadog Agent Helm (needs DATADOG_API_KEY)
   PROMETHEUS_ENABLED     Prometheus + Grafana (kube-prometheus-stack)
   LOKI_ENABLED           Loki log store + Ansible Promtail on all VMs
@@ -42,6 +45,7 @@ Platform toggles (secrets.env — true/false):
   SEALED_SECRETS_ENABLED Sealed Secrets controller (GitOps secrets)
   RELOADER_ENABLED       Stakater Reloader
   VELERO_ENABLED         Velero Helm (needs VELERO_S3_* MinIO credentials)
+  KASTEN_ENABLED         Veeam Kasten K10 + NFS Location (KASTEN_NFS_*)
 
 Default (no flags):
   1. secrets.env → platform toggles, API keys, network, cluster size
@@ -135,6 +139,7 @@ if ${HELM_ONLY}; then
   show_argocd_summary
   show_sealed_secrets_summary
   show_velero_summary
+  show_kasten_summary
   echo "done."
   exit 0
 fi
@@ -200,6 +205,7 @@ if ! ${INFRA_ONLY}; then
   show_argocd_summary
   show_sealed_secrets_summary
   show_velero_summary
+  show_kasten_summary
 fi
 
 echo "done."

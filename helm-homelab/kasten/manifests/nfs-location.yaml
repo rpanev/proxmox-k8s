@@ -1,0 +1,62 @@
+# Applied by deploy_kasten() after Helm install.
+# NFS export (Synology/NAS): 192.168.99.50:/volume1/k8s-dr
+# Must be reachable from cluster nodes (172.16.33.0/24 is on the export ACL).
+#
+# Placeholders replaced at apply time:
+#   __KASTEN_NS__ __KASTEN_NFS_SERVER__ __KASTEN_NFS_PATH__ __KASTEN_NFS_SIZE__
+#   __KASTEN_LOCATION_PROFILE__
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kasten-nfs-k8s-dr
+  labels:
+    app.kubernetes.io/name: kasten
+    app.kubernetes.io/component: nfs-location
+spec:
+  capacity:
+    storage: __KASTEN_NFS_SIZE__
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: kasten-nfs
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    server: __KASTEN_NFS_SERVER__
+    path: __KASTEN_NFS_PATH__
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kasten-nfs-k8s-dr
+  namespace: __KASTEN_NS__
+  labels:
+    app.kubernetes.io/name: kasten
+    app.kubernetes.io/component: nfs-location
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: kasten-nfs
+  resources:
+    requests:
+      storage: __KASTEN_NFS_SIZE__
+  volumeName: kasten-nfs-k8s-dr
+---
+apiVersion: config.kio.kasten.io/v1alpha1
+kind: Profile
+metadata:
+  name: __KASTEN_LOCATION_PROFILE__
+  namespace: __KASTEN_NS__
+  labels:
+    app.kubernetes.io/name: kasten
+    app.kubernetes.io/component: nfs-location
+spec:
+  type: Location
+  locationSpec:
+    type: FileStore
+    fileStore:
+      claimName: kasten-nfs-k8s-dr
+      path: /

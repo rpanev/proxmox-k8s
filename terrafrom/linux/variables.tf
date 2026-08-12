@@ -88,8 +88,8 @@ variable "ssh_password" {
 # ===== Storage =====
 variable "ceph" {
   type        = bool
-  description = "true: Ceph storage + spread VMs across proxmox_nodes; false: local storage on target_node"
-  default     = true
+  description = "true: Ceph RBD datastore; false: local_datastore_id (NFS/local)"
+  default     = false
 }
 
 variable "ceph_datastore_id" {
@@ -98,10 +98,16 @@ variable "ceph_datastore_id" {
   default     = "ceph-prod"
 }
 
+variable "shared_storage" {
+  type        = bool
+  description = "Spread VMs across proxmox_nodes when using shared NFS (e.g. SSD-storage)"
+  default     = true
+}
+
 variable "local_datastore_id" {
   type        = string
-  description = "Proxmox local storage ID when ceph = false"
-  default     = "local-lvm"
+  description = "Proxmox datastore when ceph = false (NFS SSD-storage or local-lvm)"
+  default     = "SSD-storage"
 }
 
 variable "create_pool" {

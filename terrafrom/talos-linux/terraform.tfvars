@@ -19,10 +19,12 @@ lb_memory_mb      = 2048
 lb_disk_gb        = 10
 
 # ===== Storage =====
-ceph              = true
-ceph_datastore_id = "ceph-prod"
-local_datastore_id = "local-lvm"
-create_pool       = true
+# Overridden by secrets.env → secrets.auto.tfvars (CEPH_STORAGE / PROXMOX_*)
+ceph                 = false
+ceph_datastore_id    = "ceph-prod"
+shared_storage       = true
+local_datastore_id   = "SSD-storage"
+create_pool          = true
 
 # ===== VM sizing =====
 vm_cores     = 4

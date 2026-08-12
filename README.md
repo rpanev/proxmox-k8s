@@ -62,6 +62,7 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 |--------|-----|
 | `CEPH_STORAGE` | [ceph-storage](docs/toggles/ceph-storage.md) |
 | `LONGHORN_ENABLED` | [longhorn](docs/toggles/longhorn.md) |
+| `SNAPSHOT_CONTROLLER_ENABLED` | [snapshot-controller](docs/toggles/snapshot-controller.md) |
 | `GATEWAY_ENABLED` | [gateway](docs/toggles/gateway.md) |
 | `EXTERNAL_DNS_ENABLED` | [external-dns](docs/toggles/external-dns.md) |
 | `PROMETHEUS_ENABLED` | [prometheus](docs/toggles/prometheus.md) |
@@ -72,6 +73,7 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets](docs/toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader](docs/toggles/reloader.md) |
 | `VELERO_ENABLED` | [velero](docs/toggles/velero.md) |
+| `KASTEN_ENABLED` | [kasten](docs/toggles/kasten.md) |
 | `DATADOG_ENABLED` | [datadog](docs/toggles/datadog.md) |
 | `TAILSCALE_ENABLED` | [tailscale](docs/toggles/tailscale.md) |
 | `TAILSCALE_EXPORTER_ENABLED` | [tailscale-exporter](docs/toggles/tailscale-exporter.md) |
