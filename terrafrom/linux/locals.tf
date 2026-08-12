@@ -1,5 +1,8 @@
 locals {
-  lb_node_name = var.ceph ? var.lb_node : var.target_node
+  spread_nodes = var.ceph || var.shared_storage
+  datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+
+  lb_node_name = local.spread_nodes ? var.lb_node : var.target_node
 
   cluster_node_slots = [
     for i in range(var.leader_count + var.worker_count) :

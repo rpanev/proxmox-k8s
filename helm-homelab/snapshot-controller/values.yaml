@@ -1,0 +1,22 @@
+# CSI external-snapshotter (VolumeSnapshot CRDs + controller)
+# Required for Kasten/Longhorn CSI volume snapshots & DR.
+# Chart: piraeus-charts/snapshot-controller (wraps kubernetes-csi/external-snapshotter)
+#
+# VolumeSnapshotClass is applied AFTER install (deploy_snapshot_controller) —
+# Helm cannot validate snapshot.storage.k8s.io kinds until CRDs exist.
+
+installCRDs: true
+
+controller:
+  enabled: true
+  replicaCount: 2
+  # ServiceMonitor needs monitoring.coreos.com CRDs (Prometheus). Critical path
+  # runs before kube-prometheus-stack — enable later via deploy if CRD exists.
+  serviceMonitor:
+    create: false
+
+# Conversion webhook not needed on a fresh cluster (v1 CRDs only)
+webhook:
+  enabled: false
+
+volumeSnapshotClasses: []

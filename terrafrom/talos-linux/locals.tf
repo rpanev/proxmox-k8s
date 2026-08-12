@@ -1,6 +1,10 @@
 locals {
-  lb_vm_name    = "${var.env_id}-lb"
-  lb_node_name  = var.ceph ? var.lb_node : var.target_node
+  # Ceph RBD or shared NFS (SSD-storage): spread VMs; local-lvm alone: pin to target_node
+  spread_nodes = var.ceph || var.shared_storage
+  datastore_id = var.ceph ? var.ceph_datastore_id : var.local_datastore_id
+
+  lb_vm_name   = "${var.env_id}-lb"
+  lb_node_name = local.spread_nodes ? var.lb_node : var.target_node
 
   cluster_node_slots = [
     for i in range(var.controlplane_count + var.worker_count) :

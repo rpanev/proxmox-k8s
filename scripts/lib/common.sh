@@ -26,13 +26,27 @@ load_secrets() {
 }
 
 apply_platform_toggles() {
-  export CEPH_STORAGE="$(hcl_bool "${CEPH_STORAGE:-true}")"
+  export CEPH_STORAGE="$(hcl_bool "${CEPH_STORAGE:-false}")"
+  export PROXMOX_SHARED_STORAGE="$(hcl_bool "${PROXMOX_SHARED_STORAGE:-true}")"
+  export PROXMOX_DATASTORE_ID="${PROXMOX_DATASTORE_ID:-SSD-storage}"
   export TALOS_ENABLED="$(hcl_bool "${TALOS_ENABLED:-false}")"
   export TAILSCALE_ENABLED="$(hcl_bool "${TAILSCALE_ENABLED:-true}")"
   export LONGHORN_ENABLED="$(hcl_bool "${LONGHORN_ENABLED:-true}")"
   export DATADOG_ENABLED="$(hcl_bool "${DATADOG_ENABLED:-true}")"
   export ARGOCD_ENABLED="$(hcl_bool "${ARGOCD_ENABLED:-true}")"
   export VELERO_ENABLED="$(hcl_bool "${VELERO_ENABLED:-false}")"
+  export KASTEN_ENABLED="$(hcl_bool "${KASTEN_ENABLED:-false}")"
+  # CSI VolumeSnapshot CRDs + controller — needed for Kasten/Longhorn volume snapshots.
+  # Default on when Longhorn or Kasten is enabled (unless explicitly set false).
+  if [[ -z "${SNAPSHOT_CONTROLLER_ENABLED+x}" ]] || [[ -z "${SNAPSHOT_CONTROLLER_ENABLED}" ]]; then
+    if [[ "${LONGHORN_ENABLED}" == "true" || "${KASTEN_ENABLED}" == "true" ]]; then
+      export SNAPSHOT_CONTROLLER_ENABLED="true"
+    else
+      export SNAPSHOT_CONTROLLER_ENABLED="false"
+    fi
+  else
+    export SNAPSHOT_CONTROLLER_ENABLED="$(hcl_bool "${SNAPSHOT_CONTROLLER_ENABLED}")"
+  fi
   export GATEWAY_ENABLED="$(hcl_bool "${GATEWAY_ENABLED:-true}")"
   export EXTERNAL_DNS_ENABLED="$(hcl_bool "${EXTERNAL_DNS_ENABLED:-true}")"
   export SEALED_SECRETS_ENABLED="$(hcl_bool "${SEALED_SECRETS_ENABLED:-true}")"
@@ -47,7 +61,7 @@ apply_platform_toggles() {
     export LONGHORN_MOUNT_PATH="${LONGHORN_MOUNT_PATH:-/var/mnt/longhorn-data}"
   fi
 
-  echo "==> platform: os=${HOMELAB_OS:-linux} talos=${TALOS_ENABLED} ceph=${CEPH_STORAGE} tailscale=${TAILSCALE_ENABLED} longhorn=${LONGHORN_ENABLED} datadog=${DATADOG_ENABLED} prometheus=${PROMETHEUS_ENABLED} loki=${LOKI_ENABLED} trivy=${TRIVY_OPERATOR_ENABLED} alertmanager=${ALERTMANAGER_ENABLED} argocd=${ARGOCD_ENABLED} velero=${VELERO_ENABLED} gateway=${GATEWAY_ENABLED} sealed-secrets=${SEALED_SECRETS_ENABLED} reloader=${RELOADER_ENABLED}"
+  echo "==> platform: os=${HOMELAB_OS:-linux} talos=${TALOS_ENABLED} ceph=${CEPH_STORAGE} shared=${PROXMOX_SHARED_STORAGE} datastore=${PROXMOX_DATASTORE_ID} tailscale=${TAILSCALE_ENABLED} longhorn=${LONGHORN_ENABLED} snapshot-controller=${SNAPSHOT_CONTROLLER_ENABLED} datadog=${DATADOG_ENABLED} prometheus=${PROMETHEUS_ENABLED} loki=${LOKI_ENABLED} trivy=${TRIVY_OPERATOR_ENABLED} alertmanager=${ALERTMANAGER_ENABLED} argocd=${ARGOCD_ENABLED} velero=${VELERO_ENABLED} kasten=${KASTEN_ENABLED} gateway=${GATEWAY_ENABLED} sealed-secrets=${SEALED_SECRETS_ENABLED} reloader=${RELOADER_ENABLED}"
 }
 
 hcl_list() {
@@ -176,7 +190,9 @@ leader_count = ${LEADER_COUNT}
 worker_count = ${WORKER_COUNT}
 
 # ===== Storage (from deploy-infra.sh platform toggles) =====
-ceph                     = $(hcl_bool "${CEPH_STORAGE:-true}")
+ceph                     = $(hcl_bool "${CEPH_STORAGE:-false}")
+shared_storage           = $(hcl_bool "${PROXMOX_SHARED_STORAGE:-true}")
+local_datastore_id       = "${PROXMOX_DATASTORE_ID:-SSD-storage}"
 worker_data_disk_enabled = $(hcl_bool "${LONGHORN_ENABLED:-true}")
 worker_data_disk_gb      = ${WORKER_DATA_DISK_GB:-30}
 
@@ -223,7 +239,9 @@ dns_servers     = $(hcl_list "${DNS_SERVERS:-1.1.1.1}")
 controlplane_count = ${LEADER_COUNT}
 worker_count       = ${WORKER_COUNT}
 
-ceph                     = $(hcl_bool "${CEPH_STORAGE:-true}")
+ceph                     = $(hcl_bool "${CEPH_STORAGE:-false}")
+shared_storage           = $(hcl_bool "${PROXMOX_SHARED_STORAGE:-true}")
+local_datastore_id       = "${PROXMOX_DATASTORE_ID:-SSD-storage}"
 worker_data_disk_enabled = $(hcl_bool "${LONGHORN_ENABLED:-true}")
 worker_data_disk_gb      = ${WORKER_DATA_DISK_GB:-50}
 vm_tags                  = $(hcl_list "${VM_TAGS:-k8s terraform}")
@@ -733,6 +751,8 @@ cleanup_external_dns_homelab() {
   export ARGOCD_HOSTNAME="${ARGOCD_HOSTNAME:-argocd}"
   export LONGHORN_HOSTNAME="${LONGHORN_HOSTNAME:-longhorn}"
   export GRAFANA_HOSTNAME="${GRAFANA_HOSTNAME:-grafana}"
+  export KASTEN_HOSTNAME="${KASTEN_HOSTNAME:-kasten}"
+  export KASTEN_NAMESPACE="${KASTEN_NAMESPACE:-kasten-io}"
   export PROMETHEUS_HOSTNAME="${PROMETHEUS_HOSTNAME:-prometheus}"
   python3 "${HOMELAB_ROOT}/scripts/remove-cloudflare-external-dns.py"
 }
@@ -1262,6 +1282,28 @@ helm_run_parallel() {
   return "${rc}"
 }
 
+# kubectl wait --for=Established fails immediately with NotFound if the CRD is not
+# created yet (common right after Helm returns in fast/parallel mode). Poll first.
+wait_for_crd() {
+  local crd="${1:?crd name required (e.g. profiles.config.kio.kasten.io)}"
+  local timeout_s="${2:-180}"
+  local elapsed=0
+
+  echo "    wait CRD ${crd} (up to ${timeout_s}s)"
+  while [[ "${elapsed}" -lt "${timeout_s}" ]]; do
+    if kubectl get "crd/${crd}" >/dev/null 2>&1; then
+      if kubectl wait --for=condition=Established "crd/${crd}" --timeout=60s >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  echo "error: CRD ${crd} not Established after ${timeout_s}s" >&2
+  kubectl get crd "${crd}" 2>&1 || true
+  return 1
+}
+
 wait_for_background_helm_releases() {
   local line release namespace timeout kind name
   echo "==> wait for background Helm releases"
@@ -1362,6 +1404,8 @@ gateway_platform_env() {
   export GATEWAY_LB_IP
   export GATEWAY_DOMAIN
   export CLOUDFLARE_DNS_ZONE="${EXTERNAL_DNS_DOMAIN_FILTER:-$(echo "${GATEWAY_DOMAIN}" | awk -F. '{print $(NF-1)"."$NF}')}"
+  export KASTEN_NAMESPACE="${KASTEN_NAMESPACE:-kasten-io}"
+  export KASTEN_HOSTNAME="${KASTEN_HOSTNAME:-kasten}"
   if [[ "$(hcl_bool "${LETSENCRYPT_STAGING:-false}")" == "true" ]]; then
     export ACME_SERVER="https://acme-staging-v02.api.letsencrypt.org/directory"
   else
@@ -1736,7 +1780,7 @@ wait_for_gateway_tls_certificate() {
   fi
 
   gateway_platform_env
-  local timeout="${GATEWAY_TLS_WAIT_TIMEOUT:-5m}"
+  local timeout="${GATEWAY_TLS_WAIT_TIMEOUT:-10m}"
   local manifest_dir="${HOMELAB_ROOT}/helm-homelab/gateway/manifests"
 
   echo "==> wait for Let's Encrypt TLS certificate (up to ${timeout})"
@@ -1838,6 +1882,9 @@ apply_platform_httproutes() {
     if [[ "${route}" == *longhorn* ]] && [[ "$(hcl_bool "${LONGHORN_ENABLED:-true}")" != "true" ]]; then
       continue
     fi
+    if [[ "${route}" == *kasten* ]] && [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" != "true" ]]; then
+      continue
+    fi
     if [[ "${route}" == *grafana* || "${route}" == *prometheus* ]] \
       && [[ "$(hcl_bool "${PROMETHEUS_ENABLED:-true}")" != "true" ]]; then
       continue
@@ -1845,6 +1892,10 @@ apply_platform_httproutes() {
     if [[ "${route}" == *grafana* || "${route}" == *prometheus* ]]; then
       export PROMETHEUS_NAMESPACE="${PROMETHEUS_NAMESPACE:-monitoring}"
       export PROMETHEUS_RELEASE="${PROMETHEUS_RELEASE:-prometheus}"
+    fi
+    if [[ "${route}" == *kasten* ]]; then
+      export KASTEN_NAMESPACE="${KASTEN_NAMESPACE:-kasten-io}"
+      export KASTEN_HOSTNAME="${KASTEN_HOSTNAME:-kasten}"
     fi
     apply_manifest_template "${route}"
   done
@@ -1927,6 +1978,9 @@ show_gateway_summary() {
   if [[ "$(hcl_bool "${PROMETHEUS_ENABLED:-true}")" == "true" ]]; then
     echo "    https://grafana.${domain}"
     echo "    https://prometheus.${domain}"
+  fi
+  if [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" == "true" ]]; then
+    echo "    https://${KASTEN_HOSTNAME:-kasten}.${domain}/k10/"
   fi
   echo ""
   echo "  App template:  gitops/examples/httproute-app.yaml"
@@ -2021,6 +2075,222 @@ EOF
   echo "${out}"
 }
 
+# Kasten embeds its own Prometheus (metrics under /k10/prometheus). Homelab Grafana
+# must query that store — cluster Prometheus does not scrape K10 action_* metrics.
+write_kasten_grafana_datasource_values() {
+  local kasten_ns="${KASTEN_NAMESPACE:-kasten-io}"
+  local out="${HOMELAB_ROOT}/scripts/generated/prometheus-kasten-datasource.values.yaml"
+  mkdir -p "$(dirname "${out}")"
+  cat >"${out}" <<EOF
+# Generated by deploy-infra.sh — Kasten K10 Prometheus datasource for Grafana.
+grafana:
+  additionalDataSources:
+    - name: Kasten
+      uid: kasten
+      type: prometheus
+      access: proxy
+      url: http://prometheus-server.${kasten_ns}.svc.cluster.local/k10/prometheus
+      isDefault: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+EOF
+  echo "${out}"
+}
+
+# Merge optional Grafana datasources into ONE values file — Helm replaces arrays
+# across multiple -f files, so Loki+Kasten must be listed together.
+write_extra_grafana_datasource_values() {
+  local out="${HOMELAB_ROOT}/scripts/generated/prometheus-extra-datasources.values.yaml"
+  local loki kasten
+  loki="$(hcl_bool "${LOKI_ENABLED:-false}")"
+  kasten="$(hcl_bool "${KASTEN_ENABLED:-false}")"
+  mkdir -p "$(dirname "${out}")"
+
+  if [[ "${loki}" != "true" && "${kasten}" != "true" ]]; then
+    rm -f "${out}"
+    return 1
+  fi
+
+  {
+    echo "# Generated by deploy-infra.sh — optional Grafana datasources (merged; Helm replaces arrays)."
+    echo "grafana:"
+    echo "  additionalDataSources:"
+    if [[ "${loki}" == "true" ]]; then
+      cat <<EOF
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://${LOKI_RELEASE:-loki}-gateway.${LOKI_NAMESPACE:-monitoring}.svc.cluster.local
+      isDefault: false
+      jsonData:
+        maxLines: 1000
+EOF
+    fi
+    if [[ "${kasten}" == "true" ]]; then
+      cat <<EOF
+    - name: Kasten
+      uid: kasten
+      type: prometheus
+      access: proxy
+      url: http://prometheus-server.${KASTEN_NAMESPACE:-kasten-io}.svc.cluster.local/k10/prometheus
+      isDefault: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+EOF
+    fi
+  } >"${out}"
+  echo "${out}"
+}
+
+# Optional backup dashboards — only when the matching toggle is on.
+# Kasten: local JSON with tags (backup/kasten/k10); Velero: grafana.com gnetId.
+write_backup_grafana_dashboard_values() {
+  local out="${HOMELAB_ROOT}/scripts/generated/prometheus-backup-dashboards.values.yaml"
+  local velero kasten
+  velero="$(hcl_bool "${VELERO_ENABLED:-false}")"
+  kasten="$(hcl_bool "${KASTEN_ENABLED:-false}")"
+  mkdir -p "$(dirname "${out}")"
+
+  if [[ "${velero}" != "true" && "${kasten}" != "true" ]]; then
+    rm -f "${out}"
+    return 1
+  fi
+
+  python3 - "${out}" "${velero}" "${kasten}" "${HOMELAB_ROOT}" <<'PY'
+import json, pathlib, sys, textwrap
+out, velero, kasten, root = sys.argv[1:5]
+lines = [
+    "# Generated by deploy-infra.sh — backup Grafana dashboards (toggle-gated).",
+    "grafana:",
+    "  dashboards:",
+    "    homelab:",
+]
+if velero == "true":
+    lines += [
+        "      velero:",
+        "        gnetId: 23838",
+        "        revision: 1",
+        "        datasource: Prometheus",
+    ]
+if kasten == "true":
+    dash_path = pathlib.Path(root) / "helm-homelab/grafana/dashboards/kasten-k10.json"
+    dash = json.loads(dash_path.read_text())
+    dash["tags"] = ["backup", "kasten", "k10"]
+    body = json.dumps(dash, indent=2)
+    indented = textwrap.indent(body, "          ")
+    lines += [
+        "      kasten-k10:",
+        "        datasource: Prometheus",
+        "        json: |",
+        indented,
+    ]
+pathlib.Path(out).write_text("\n".join(lines) + "\n")
+print(out)
+PY
+}
+
+# Drop Grafana dashboard ConfigMaps left from a previous toggle-on install.
+prune_disabled_backup_grafana_dashboards() {
+  local namespace="${PROMETHEUS_NAMESPACE:-monitoring}"
+  local release="${PROMETHEUS_RELEASE:-prometheus}"
+  if [[ "$(hcl_bool "${VELERO_ENABLED:-false}")" != "true" ]]; then
+    kubectl -n "${namespace}" delete configmap \
+      "${release}-grafana-dashboard-velero" --ignore-not-found >/dev/null 2>&1 || true
+  fi
+  if [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" != "true" ]]; then
+    kubectl -n "${namespace}" delete configmap \
+      "${release}-grafana-dashboard-kasten-k10" --ignore-not-found >/dev/null 2>&1 || true
+  fi
+}
+
+# Grafana API cleanup for non-provisioned leftovers (toggle off).
+# Tags for Kasten come from helm-homelab/grafana/dashboards/kasten-k10.json (provisioned).
+sync_grafana_backup_dashboard_metadata() {
+  if [[ "$(hcl_bool "${PROMETHEUS_ENABLED:-true}")" != "true" ]]; then
+    return 0
+  fi
+
+  local namespace="${PROMETHEUS_NAMESPACE:-monitoring}"
+  local release="${PROMETHEUS_RELEASE:-prometheus}"
+  local user pass
+  user="$(kubectl -n "${namespace}" get secret "${release}-grafana" \
+    -o jsonpath='{.data.admin-user}' 2>/dev/null | base64 -d)"
+  pass="$(kubectl -n "${namespace}" get secret "${release}-grafana" \
+    -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d)"
+  if [[ -z "${user}" || -z "${pass}" ]]; then
+    echo "note: skip Grafana backup-dashboard sync (no admin secret)" >&2
+    return 0
+  fi
+
+  echo "==> Grafana: prune disabled backup dashboards (API)"
+  python3 - "${namespace}" "${release}" "${user}" "${pass}" \
+    "$(hcl_bool "${VELERO_ENABLED:-false}")" \
+    "$(hcl_bool "${KASTEN_ENABLED:-false}")" <<'PY' || true
+import base64, json, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+
+ns, release, user, password, velero, kasten = sys.argv[1:7]
+pf = subprocess.Popen(
+    ["kubectl", "-n", ns, "port-forward", f"svc/{release}-grafana", "18430:80"],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+)
+time.sleep(2)
+try:
+    def req(method, path, data=None):
+        url = f"http://127.0.0.1:18430{path}"
+        body = None if data is None else json.dumps(data).encode()
+        r = urllib.request.Request(url, data=body, method=method)
+        token = base64.b64encode(f"{user}:{password}".encode()).decode()
+        r.add_header("Authorization", f"Basic {token}")
+        if body is not None:
+            r.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(r, timeout=30) as resp:
+            raw = resp.read()
+            return json.loads(raw) if raw else {}
+
+    def search(q):
+        try:
+            return req("GET", f"/api/search?query={urllib.parse.quote(q)}")
+        except Exception:
+            return []
+
+    if velero != "true":
+        for hit in search("Velero"):
+            title = hit.get("title") or ""
+            if "velero" not in title.lower():
+                continue
+            uid = hit["uid"]
+            print(f"  delete Grafana dashboard {title!r} ({uid})")
+            try:
+                req("DELETE", f"/api/dashboards/uid/{uid}")
+            except urllib.error.HTTPError as e:
+                # Provisioned boards cannot be deleted via API — helm prune handles ConfigMaps.
+                print(f"  note: could not delete ({e.code}) — will rely on Helm re-provision", file=sys.stderr)
+
+    if kasten == "true":
+        print("  Kasten tags: provisioned from helm-homelab/grafana/dashboards/kasten-k10.json (backup, kasten, k10)")
+    else:
+        for hit in search("Kasten"):
+            title = hit.get("title") or ""
+            if not any(x in title.lower() for x in ("kasten", "k10", "kaston")):
+                continue
+            uid = hit["uid"]
+            print(f"  delete Grafana dashboard {title!r} ({uid})")
+            try:
+                req("DELETE", f"/api/dashboards/uid/{uid}")
+            except urllib.error.HTTPError as e:
+                print(f"  note: could not delete ({e.code}) — will rely on Helm re-provision", file=sys.stderr)
+finally:
+    pf.terminate()
+    try:
+        pf.wait(timeout=5)
+    except Exception:
+        pf.kill()
+PY
+}
+
 prometheus_wait_workloads() {
   local namespace="${PROMETHEUS_NAMESPACE:-monitoring}"
   local release="${PROMETHEUS_RELEASE:-prometheus}"
@@ -2109,11 +2379,14 @@ deploy_prometheus() {
     helm_args+=(-f "${lb_values}")
     echo "    LB scrape: ${lb_ip}:9100 (node) + ${lb_ip}:8404 (haproxy)"
   fi
-  if [[ "$(hcl_bool "${LOKI_ENABLED:-false}")" == "true" ]]; then
-    local loki_ds_values
-    loki_ds_values="$(write_loki_grafana_datasource_values)"
-    helm_args+=(-f "${loki_ds_values}")
-    echo "    Grafana: Loki datasource → ${LOKI_RELEASE:-loki}-gateway"
+  if extra_ds_values="$(write_extra_grafana_datasource_values)"; then
+    helm_args+=(-f "${extra_ds_values}")
+    echo "    Grafana: extra datasources (loki=$(hcl_bool "${LOKI_ENABLED:-false}") kasten=$(hcl_bool "${KASTEN_ENABLED:-false}"))"
+  fi
+  local backup_dash_values=""
+  if backup_dash_values="$(write_backup_grafana_dashboard_values)"; then
+    helm_args+=(-f "${backup_dash_values}")
+    echo "    Grafana: backup dashboards (velero=$(hcl_bool "${VELERO_ENABLED:-false}") kasten=$(hcl_bool "${KASTEN_ENABLED:-false}"))"
   fi
   if [[ "$(hcl_bool "${GATEWAY_ENABLED:-true}")" == "true" ]]; then
     load_secrets
@@ -2143,7 +2416,10 @@ deploy_prometheus() {
 
   while [[ "${attempt}" -le "${attempts}" ]]; do
     if helm_run_with_retry "${release}" "${namespace}" "${helm_args[@]}"; then
+      prune_disabled_backup_grafana_dashboards
       if prometheus_wait_workloads; then
+        sync_grafana_backup_dashboard_metadata
+        finalize_snapshot_controller_monitoring
         return 0
       fi
       echo "error: prometheus workloads not ready (attempt ${attempt}/${attempts})" >&2
@@ -2367,16 +2643,31 @@ ensure_talos_platform_namespaces() {
     "${SEALED_SECRETS_NAMESPACE:-kube-system}"
     "${RELOADER_NAMESPACE:-reloader}"
     "${GATEWAY_NAMESPACE:-envoy-gateway-system}"
-    "${DATADOG_NAMESPACE:-datadog}"
     "${PROMETHEUS_NAMESPACE:-monitoring}"
     "${LOKI_NAMESPACE:-monitoring}"
-    "${TAILSCALE_EXPORTER_NAMESPACE:-tailscale-exporter}"
-    "${TRIVY_OPERATOR_NAMESPACE:-trivy-system}"
-    "${ARGOCD_NAMESPACE:-argocd}"
     "${EXTERNAL_DNS_NAMESPACE:-external-dns}"
-    "${VELERO_NAMESPACE:-velero}"
-    tailscale
   )
+
+  if [[ "$(hcl_bool "${DATADOG_ENABLED:-false}")" == "true" ]]; then
+    namespaces+=("${DATADOG_NAMESPACE:-datadog}")
+  fi
+  if [[ "$(hcl_bool "${TAILSCALE_EXPORTER_ENABLED:-false}")" == "true" ]] \
+    || [[ "$(hcl_bool "${TAILSCALE_ENABLED:-false}")" == "true" ]]; then
+    namespaces+=("${TAILSCALE_EXPORTER_NAMESPACE:-tailscale-exporter}")
+    namespaces+=(tailscale)
+  fi
+  if [[ "$(hcl_bool "${TRIVY_OPERATOR_ENABLED:-false}")" == "true" ]]; then
+    namespaces+=("${TRIVY_OPERATOR_NAMESPACE:-trivy-system}")
+  fi
+  if [[ "$(hcl_bool "${ARGOCD_ENABLED:-true}")" == "true" ]]; then
+    namespaces+=("${ARGOCD_NAMESPACE:-argocd}")
+  fi
+  if [[ "$(hcl_bool "${VELERO_ENABLED:-false}")" == "true" ]]; then
+    namespaces+=("${VELERO_NAMESPACE:-velero}")
+  fi
+  if [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" == "true" ]]; then
+    namespaces+=("${KASTEN_NAMESPACE:-kasten-io}")
+  fi
 
   echo "==> Talos: platform namespaces → pod-security enforce=privileged"
   local ns
@@ -2472,10 +2763,111 @@ deploy_helm_workloads() {
 }
 
 deploy_helm_critical_path() {
-  echo "==> Helm critical path (MetalLB → Longhorn → Prometheus → cert-manager → Gateway)"
+  echo "==> Helm critical path (MetalLB → snapshot-controller → Longhorn → …)"
   deploy_metallb
   wait_for_etcd_cooldown
+  deploy_snapshot_controller
+  wait_for_etcd_cooldown
   deploy_longhorn
+}
+
+deploy_snapshot_controller() {
+  if [[ "$(hcl_bool "${SNAPSHOT_CONTROLLER_ENABLED:-false}")" != "true" ]]; then
+    echo "skip snapshot-controller (SNAPSHOT_CONTROLLER_ENABLED=false)"
+    return 0
+  fi
+
+  local namespace="${SNAPSHOT_CONTROLLER_NAMESPACE:-kube-system}"
+  local release="${SNAPSHOT_CONTROLLER_RELEASE:-snapshot-controller}"
+  local helm_repo="${SNAPSHOT_CONTROLLER_HELM_REPO:-https://piraeus.io/helm-charts/}"
+  local chart="${SNAPSHOT_CONTROLLER_CHART:-piraeus-charts/snapshot-controller}"
+  local wait_timeout="${SNAPSHOT_CONTROLLER_WAIT_TIMEOUT:-5m}"
+  local values="${HOMELAB_ROOT}/helm-homelab/snapshot-controller/values.yaml"
+  local with_servicemonitor="${1:-auto}"
+
+  if [[ ! -f "${values}" ]]; then
+    echo "error: missing ${values}" >&2
+    return 1
+  fi
+
+  ensure_helm_cli
+  echo "==> helm: snapshot-controller (${release}) → namespace ${namespace}"
+  echo "    VolumeSnapshot CRDs + controller (Kasten/Longhorn CSI snapshots)"
+  helm_repo_ensure piraeus-charts "${helm_repo}"
+
+  local -a helm_args=(
+    upgrade --install "${release}" "${chart}"
+    --namespace "${namespace}"
+    --timeout "${wait_timeout}"
+    --hide-notes
+    -f "${values}"
+  )
+  # ServiceMonitor needs Prometheus Operator CRDs. Critical path runs before Prometheus;
+  # pass "servicemonitor" (or auto-detect) after kube-prometheus-stack is up.
+  local enable_sm=false
+  if [[ "${with_servicemonitor}" == "servicemonitor" ]]; then
+    enable_sm=true
+  elif [[ "${with_servicemonitor}" == "auto" ]] \
+    && kubectl get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1; then
+    enable_sm=true
+  fi
+  if [[ "${enable_sm}" == "true" ]]; then
+    if ! kubectl get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1; then
+      echo "error: ServiceMonitor CRD missing — deploy Prometheus first" >&2
+      return 1
+    fi
+    helm_args+=(--set controller.serviceMonitor.create=true)
+    echo "    ServiceMonitor: enabled"
+  else
+    helm_args+=(--set controller.serviceMonitor.create=false)
+    echo "    ServiceMonitor: deferred until Prometheus (same deploy)"
+  fi
+  if [[ -n "${SNAPSHOT_CONTROLLER_CHART_VERSION:-}" ]]; then
+    helm_args+=(--version "${SNAPSHOT_CONTROLLER_CHART_VERSION}")
+  fi
+
+  helm_install_release "$(helm_stack_install_mode)" "${release}" "${namespace}" true "${helm_args[@]}"
+
+  kubectl wait --for=condition=Established \
+    crd/volumesnapshotclasses.snapshot.storage.k8s.io \
+    crd/volumesnapshots.snapshot.storage.k8s.io \
+    crd/volumesnapshotcontents.snapshot.storage.k8s.io \
+    --timeout=120s >/dev/null
+
+  # Longhorn CSI class for Kasten (cannot be in Helm values until CRDs exist).
+  # type=snap: local snapshot — does not require Longhorn Backup Target (Kasten exports to NFS).
+  kubectl apply -f - <<'EOF'
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: longhorn
+  labels:
+    app.kubernetes.io/name: snapshot-controller
+  annotations:
+    k10.kasten.io/is-snapshot-class: "true"
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: driver.longhorn.io
+deletionPolicy: Delete
+parameters:
+  type: snap
+EOF
+  echo "    VolumeSnapshot CRDs Ready; VolumeSnapshotClass longhorn (type=snap) for Kasten"
+}
+
+# After Prometheus Operator CRDs exist — enable ServiceMonitor in the same deploy run.
+finalize_snapshot_controller_monitoring() {
+  if [[ "$(hcl_bool "${SNAPSHOT_CONTROLLER_ENABLED:-false}")" != "true" ]]; then
+    return 0
+  fi
+  if [[ "$(hcl_bool "${PROMETHEUS_ENABLED:-true}")" != "true" ]]; then
+    return 0
+  fi
+  if ! kubectl get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1; then
+    echo "warn: skip snapshot-controller ServiceMonitor — Prometheus CRDs not ready" >&2
+    return 0
+  fi
+  echo "==> snapshot-controller: enable ServiceMonitor (Prometheus is up)"
+  deploy_snapshot_controller servicemonitor
 }
 
 deploy_helm_finish() {
@@ -2508,6 +2900,7 @@ deploy_helm_workloads_k3s() {
   wait_for_etcd_cooldown
   deploy_trivy_operator
   deploy_velero
+  deploy_kasten
   wait_for_etcd_cooldown
   deploy_argocd
 
@@ -2537,6 +2930,9 @@ deploy_helm_workloads_talos() {
     deploy_velero \
     deploy_argocd
   helm_end_background_phase
+
+  # Kasten needs its CRDs before NFS Location Profile — run after parallel fast-install.
+  deploy_kasten
 
   deploy_helm_finish
 }
@@ -2948,6 +3344,385 @@ deploy_velero() {
   fi
 
   helm_install_release "$(helm_stack_install_mode)" "${release}" "${namespace}" true "${helm_args[@]}"
+}
+
+apply_kasten_nfs_location() {
+  local namespace="${1:?namespace required}"
+  local manifest="${HOMELAB_ROOT}/helm-homelab/kasten/manifests/nfs-location.yaml"
+  local server path size profile rendered
+
+  : "${KASTEN_NFS_SERVER:?KASTEN_NFS_SERVER required when KASTEN_ENABLED=true}"
+  : "${KASTEN_NFS_PATH:?KASTEN_NFS_PATH required when KASTEN_ENABLED=true}"
+  server="${KASTEN_NFS_SERVER}"
+  path="${KASTEN_NFS_PATH}"
+  size="${KASTEN_NFS_SIZE:-1Ti}"
+  profile="${KASTEN_LOCATION_PROFILE:-nfs-k8s-dr}"
+
+  if [[ ! -f "${manifest}" ]]; then
+    echo "error: missing ${manifest}" >&2
+    return 1
+  fi
+
+  echo "==> Kasten NFS Location Profile (${profile}): ${server}:${path}"
+  wait_for_crd profiles.config.kio.kasten.io "${KASTEN_CRD_WAIT_TIMEOUT:-300}"
+
+  rendered="$(mktemp)"
+  sed \
+    -e "s|__KASTEN_NS__|${namespace}|g" \
+    -e "s|__KASTEN_NFS_SERVER__|${server}|g" \
+    -e "s|__KASTEN_NFS_PATH__|${path}|g" \
+    -e "s|__KASTEN_NFS_SIZE__|${size}|g" \
+    -e "s|__KASTEN_LOCATION_PROFILE__|${profile}|g" \
+    "${manifest}" >"${rendered}"
+  kubectl apply -f "${rendered}"
+  rm -f "${rendered}"
+
+  kubectl -n "${namespace}" wait --for=condition=Bound \
+    "pvc/kasten-nfs-k8s-dr" --timeout="${KASTEN_NFS_PVC_TIMEOUT:-5m}" >/dev/null || {
+    echo "warn: PVC kasten-nfs-k8s-dr not Bound yet — check NFS export ACL (${server}:${path})" >&2
+  }
+}
+
+# App Policy: every non-excluded namespace (refreshed on each deploy so new NS are picked up).
+# Note: selector In=["*"] is rejected by K10 ("use K10 DR for kasten-io") — use explicit In list.
+apply_kasten_backup_policy() {
+  local namespace="${1:?namespace required}"
+  local profile policy_name frequency hour daily weekly monthly
+  local excludes exclude_csv rendered
+
+  if [[ "$(hcl_bool "${KASTEN_POLICY_ENABLED:-true}")" != "true" ]]; then
+    echo "skip Kasten backup Policy (KASTEN_POLICY_ENABLED=false)"
+    return 0
+  fi
+
+  profile="${KASTEN_LOCATION_PROFILE:-nfs-k8s-dr}"
+  policy_name="${KASTEN_POLICY_NAME:-homelab-all-apps}"
+  frequency="${KASTEN_POLICY_FREQUENCY:-@daily}"
+  hour="${KASTEN_POLICY_HOUR:-2}"
+  daily="${KASTEN_POLICY_RETENTION_DAILY:-7}"
+  weekly="${KASTEN_POLICY_RETENTION_WEEKLY:-4}"
+  monthly="${KASTEN_POLICY_RETENTION_MONTHLY:-3}"
+  excludes="${KASTEN_POLICY_EXCLUDE:-kube-system,kube-public,kube-node-lease,kasten-io}"
+  exclude_csv="${excludes}"
+
+  echo "==> Kasten Policy (${policy_name}): ${frequency} @ ${hour}:00 → profile ${profile}"
+  wait_for_crd policies.config.kio.kasten.io "${KASTEN_CRD_WAIT_TIMEOUT:-300}"
+
+  rendered="$(mktemp)"
+  python3 - "${rendered}" "${namespace}" "${policy_name}" "${profile}" "${frequency}" \
+    "${hour}" "${daily}" "${weekly}" "${monthly}" "${exclude_csv}" <<'PY'
+import json, pathlib, subprocess, sys
+
+out, ns, name, profile, freq, hour, daily, weekly, monthly, exclude_csv = sys.argv[1:]
+exclude = {x.strip() for x in exclude_csv.split(",") if x.strip()}
+raw = subprocess.check_output(
+    ["kubectl", "get", "ns", "-o", "jsonpath={.items[*].metadata.name}"], text=True
+)
+apps = sorted(n for n in raw.split() if n not in exclude)
+if not apps:
+    print("error: no namespaces left after excludes", file=sys.stderr)
+    sys.exit(1)
+print("    selector In:", ", ".join(apps))
+doc = {
+    "apiVersion": "config.kio.kasten.io/v1alpha1",
+    "kind": "Policy",
+    "metadata": {
+        "name": name,
+        "namespace": ns,
+        "labels": {
+            "app.kubernetes.io/name": "kasten",
+            "app.kubernetes.io/component": "backup-policy",
+        },
+    },
+    "spec": {
+        "comment": "Homelab — all namespaces except system (list refreshed on each deploy)",
+        "frequency": freq,
+        "subFrequency": {"hours": [int(hour)], "minutes": [0]},
+        "retention": {
+            "daily": int(daily),
+            "weekly": int(weekly),
+            "monthly": int(monthly),
+        },
+        "selector": {
+            "matchExpressions": [
+                {
+                    "key": "k10.kasten.io/appNamespace",
+                    "operator": "In",
+                    "values": apps,
+                }
+            ]
+        },
+        "actions": [
+            {"action": "backup"},
+            {
+                "action": "export",
+                "exportParameters": {
+                    "frequency": freq,
+                    "profile": {"name": profile, "namespace": ns},
+                    "exportData": {"enabled": True},
+                },
+            },
+        ],
+    },
+}
+pathlib.Path(out).write_text(json.dumps(doc, indent=2) + "\n")
+PY
+
+  kubectl apply --validate=false -f "${rendered}"
+  rm -f "${rendered}"
+
+  local i st
+  for i in $(seq 1 30); do
+    st="$(kubectl -n "${namespace}" get "policy/${policy_name}" -o jsonpath='{.status.validation}' 2>/dev/null || true)"
+    if [[ "${st}" == "Success" ]]; then
+      echo "    Policy ${policy_name}: validation Success"
+      break
+    fi
+    sleep 2
+  done
+  if [[ "${st}" != "Success" ]]; then
+    echo "warn: Policy ${policy_name} validation=${st:-unknown} — kubectl -n ${namespace} describe policy ${policy_name}" >&2
+  fi
+
+  apply_kasten_dr_policy "${namespace}"
+}
+
+# K10 Disaster Recovery — requires passphrase Secret before Policy is accepted.
+# Passphrase: KASTEN_DR_PASSPHRASE or secrets/<ENV_ID>/kasten-dr-passphrase (auto-created).
+apply_kasten_dr_policy() {
+  local namespace="${1:?namespace required}"
+  local profile frequency hour daily rendered passphrase_file passphrase
+
+  if [[ "$(hcl_bool "${KASTEN_DR_POLICY_ENABLED:-true}")" != "true" ]]; then
+    echo "skip Kasten K10 DR Policy (KASTEN_DR_POLICY_ENABLED=false)"
+    return 0
+  fi
+
+  profile="${KASTEN_LOCATION_PROFILE:-nfs-k8s-dr}"
+  frequency="${KASTEN_DR_POLICY_FREQUENCY:-@daily}"
+  hour="${KASTEN_DR_POLICY_HOUR:-3}"
+  daily="${KASTEN_DR_POLICY_RETENTION_DAILY:-7}"
+  passphrase_file="${HOMELAB_ROOT}/secrets/${ENV_ID}/kasten-dr-passphrase"
+
+  passphrase="${KASTEN_DR_PASSPHRASE:-}"
+  if [[ -z "${passphrase}" && -f "${passphrase_file}" ]]; then
+    passphrase="$(tr -d '\n' <"${passphrase_file}")"
+  fi
+  if [[ -z "${passphrase}" ]]; then
+    mkdir -p "${HOMELAB_ROOT}/secrets/${ENV_ID}"
+    passphrase="$(openssl rand -base64 32 | tr -d '\n')"
+    umask 077
+    printf '%s\n' "${passphrase}" >"${passphrase_file}"
+    echo "    generated K10 DR passphrase → ${passphrase_file} (store offline for recovery!)"
+  fi
+
+  echo "==> Kasten K10 DR Policy (k10-disaster-recovery-policy): ${frequency} @ ${hour}:00 → ${profile}"
+  kubectl -n "${namespace}" create secret generic k10-dr-secret \
+    --from-literal=key="${passphrase}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  rendered="$(mktemp)"
+  python3 - "${rendered}" "${namespace}" "${profile}" "${frequency}" "${hour}" "${daily}" <<'PY'
+import json, pathlib, sys
+out, ns, profile, freq, hour, daily = sys.argv[1:]
+# Exact name required by Kasten docs.
+doc = {
+    "apiVersion": "config.kio.kasten.io/v1alpha1",
+    "kind": "Policy",
+    "metadata": {
+        "name": "k10-disaster-recovery-policy",
+        "namespace": ns,
+        "labels": {
+            "app.kubernetes.io/name": "kasten",
+            "app.kubernetes.io/component": "k10-dr-policy",
+        },
+    },
+    "spec": {
+        "comment": "K10 Disaster Recovery — catalog snapshot + export to NFS",
+        "frequency": freq,
+        "subFrequency": {"hours": [int(hour)], "minutes": [0]},
+        "retention": {
+            "daily": int(daily),
+            "weekly": 4,
+            "monthly": 3,
+            "yearly": 1,
+        },
+        "kdrSnapshotConfiguration": {
+            "takeLocalCatalogSnapshot": True,
+            "exportCatalogSnapshot": True,
+        },
+        "selector": {
+            "matchExpressions": [
+                {
+                    "key": "k10.kasten.io/appNamespace",
+                    "operator": "In",
+                    "values": ["kasten-io"],
+                }
+            ]
+        },
+        "actions": [
+            {
+                "action": "backup",
+                "backupParameters": {
+                    "filters": {},
+                    "profile": {"name": profile, "namespace": ns},
+                },
+            },
+            {
+                "action": "export",
+                "exportParameters": {
+                    "exportData": {"enabled": True},
+                    "profile": {"name": profile, "namespace": ns},
+                },
+            },
+        ],
+    },
+}
+pathlib.Path(out).write_text(json.dumps(doc, indent=2) + "\n")
+PY
+  kubectl apply --validate=false -f "${rendered}"
+  rm -f "${rendered}"
+
+  local i st
+  for i in $(seq 1 30); do
+    st="$(kubectl -n "${namespace}" get policy/k10-disaster-recovery-policy -o jsonpath='{.status.validation}' 2>/dev/null || true)"
+    if [[ "${st}" == "Success" ]]; then
+      echo "    Policy k10-disaster-recovery-policy: validation Success"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "warn: K10 DR Policy validation=${st:-unknown} — need k10-dr-secret + exact policy name" >&2
+  kubectl -n "${namespace}" get policy/k10-disaster-recovery-policy -o jsonpath='{.status.error}' 2>/dev/null | head -c 400 || true
+  echo
+}
+
+apply_kasten_storage() {
+  local storage_manifest="${HOMELAB_ROOT}/helm-homelab/kasten/manifests/storage.yaml"
+  local sc="${KASTEN_STORAGE_CLASS:-longhorn-1r}"
+
+  if [[ ! -f "${storage_manifest}" ]]; then
+    echo "error: missing ${storage_manifest}" >&2
+    return 1
+  fi
+
+  echo "==> Kasten storage helpers (SC ${sc} + VolumeSnapshotClass)"
+  if kubectl get crd volumesnapshotclasses.snapshot.storage.k8s.io >/dev/null 2>&1; then
+    kubectl apply -f "${storage_manifest}"
+    return 0
+  fi
+
+  echo "warn: VolumeSnapshot CRDs missing — StorageClass only (install snapshot-controller for CSI snapshots)" >&2
+  kubectl apply -f - <<EOF
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ${sc}
+  labels:
+    app.kubernetes.io/name: kasten
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "30"
+  fsType: ext4
+EOF
+}
+
+deploy_kasten() {
+  if [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" != "true" ]]; then
+    echo "skip Kasten (KASTEN_ENABLED=false)"
+    return 0
+  fi
+
+  if [[ "$(hcl_bool "${LONGHORN_ENABLED:-true}")" != "true" ]]; then
+    echo "error: KASTEN_ENABLED=true requires LONGHORN_ENABLED=true" >&2
+    return 1
+  fi
+
+  local namespace="${KASTEN_NAMESPACE:-kasten-io}"
+  local release="${KASTEN_RELEASE:-k10}"
+  local helm_repo="${KASTEN_HELM_REPO:-https://charts.kasten.io/}"
+  local chart="${KASTEN_CHART:-kasten/k10}"
+  local wait_timeout="${KASTEN_WAIT_TIMEOUT:-15m}"
+  local values="${HOMELAB_ROOT}/helm-homelab/kasten/values.yaml"
+  local storage_class="${KASTEN_STORAGE_CLASS:-longhorn-1r}"
+
+  if [[ ! -f "${values}" ]]; then
+    echo "error: missing ${values}" >&2
+    return 1
+  fi
+
+  if ! command -v helm >/dev/null 2>&1; then
+    echo "==> install Helm"
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  fi
+
+  ensure_privileged_namespace "${namespace}"
+  apply_kasten_storage
+
+  echo "==> helm: Kasten K10 (${release}) → namespace ${namespace}"
+  helm_repo_ensure kasten "${helm_repo}"
+
+  local -a helm_args=(
+    upgrade --install "${release}" "${chart}"
+    --namespace "${namespace}"
+    --create-namespace
+    --timeout "${wait_timeout}"
+    --hide-notes
+    -f "${values}"
+    --set-string "global.persistence.storageClass=${storage_class}"
+  )
+  if [[ -n "${KASTEN_CHART_VERSION:-}" ]]; then
+    helm_args+=(--version "${KASTEN_CHART_VERSION}")
+  fi
+
+  # Always wait for K10 here (not fast/deferred): NFS Profile apply needs CRDs present.
+  helm_install_release critical "${release}" "${namespace}" true "${helm_args[@]}"
+  wait_for_crd profiles.config.kio.kasten.io "${KASTEN_CRD_WAIT_TIMEOUT:-300}"
+  apply_kasten_nfs_location "${namespace}"
+  apply_kasten_backup_policy "${namespace}"
+}
+
+show_kasten_summary() {
+  load_secrets
+  if [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" != "true" ]]; then
+    return 0
+  fi
+
+  local namespace profile server path domain hostname gateway
+  namespace="${KASTEN_NAMESPACE:-kasten-io}"
+  profile="${KASTEN_LOCATION_PROFILE:-nfs-k8s-dr}"
+  server="${KASTEN_NFS_SERVER:-}"
+  path="${KASTEN_NFS_PATH:-}"
+  domain="${GATEWAY_DOMAIN:-}"
+  hostname="${KASTEN_HOSTNAME:-kasten}"
+  gateway="$(hcl_bool "${GATEWAY_ENABLED:-true}")"
+
+  echo ""
+  echo "================================================================"
+  echo " Kasten (K10)"
+  echo "================================================================"
+  echo ""
+  if [[ "${gateway}" == "true" ]] && [[ -n "${domain}" ]]; then
+    echo "  UI (LAN):  https://${hostname}.${domain}/k10/"
+  else
+    echo "  UI:       kubectl -n ${namespace} port-forward svc/gateway 8080:80"
+    echo "            → http://127.0.0.1:8080/k10/#/"
+  fi
+  echo "  Location: ${profile} (${server}:${path})"
+  if [[ "$(hcl_bool "${KASTEN_POLICY_ENABLED:-true}")" == "true" ]]; then
+    echo "  Policy:   ${KASTEN_POLICY_NAME:-homelab-all-apps} (${KASTEN_POLICY_FREQUENCY:-@daily} @ ${KASTEN_POLICY_HOUR:-2}:00)"
+    echo "            all NS except: ${KASTEN_POLICY_EXCLUDE:-kube-system,kube-public,kube-node-lease,kasten-io}"
+  fi
+  if [[ "$(hcl_bool "${KASTEN_DR_POLICY_ENABLED:-true}")" == "true" ]]; then
+    echo "  K10 DR:   k10-disaster-recovery-policy (${KASTEN_DR_POLICY_FREQUENCY:-@daily} @ ${KASTEN_DR_POLICY_HOUR:-3}:00)"
+    echo "            passphrase: secrets/${ENV_ID}/kasten-dr-passphrase"
+  fi
+  echo "  Grafana:  Homelab → Kasten Dashboard (datasource Kasten)"
+  echo ""
 }
 
 show_velero_summary() {

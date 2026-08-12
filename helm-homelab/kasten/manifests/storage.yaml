@@ -1,0 +1,31 @@
+# Optional: single-replica Longhorn class for Kasten PVCs (small disks).
+# Created by deploy_kasten() if missing.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-1r
+  labels:
+    app.kubernetes.io/name: kasten
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "30"
+  fsType: ext4
+---
+# VolumeSnapshotClass for CSI snapshots (Longhorn) — annotated for Kasten.
+# type=snap: local Longhorn snapshot (no Backup Target required). Kasten exports to NFS.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: longhorn
+  labels:
+    app.kubernetes.io/name: kasten
+  annotations:
+    k10.kasten.io/is-snapshot-class: "true"
+driver: driver.longhorn.io
+deletionPolicy: Delete
+parameters:
+  type: snap

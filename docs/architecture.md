@@ -32,7 +32,9 @@ API LB is `.210`; ingress/MetalLB is `.211` — different roles.
 
 Five hosts: `node1` … `node5`. VM placement is set per stack in
 `terrafrom/*/terraform.tfvars`. With `CEPH_STORAGE=true`, VM disks use
-`ceph-prod` (or your `ceph_datastore_id`).
+`ceph-prod` (or your `ceph_datastore_id`). With `CEPH_STORAGE=false`, disks use
+`PROXMOX_DATASTORE_ID` (e.g. NFS `SSD-storage`) and stay multi-node when
+`PROXMOX_SHARED_STORAGE=true`.
 
 ## Platform stack (Helm)
 

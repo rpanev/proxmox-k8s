@@ -92,11 +92,7 @@ grafana:
         gnetId: 16337
         revision: 16
         datasource: Prometheus
-      # Velero backup stats — needs VELERO_ENABLED + metrics.serviceMonitor
-      velero:
-        gnetId: 23838
-        revision: 1
-        datasource: Prometheus
+      # Velero (23838) / Kasten (21065): added at deploy via write_backup_grafana_dashboard_values
 
 # Node metrics — DaemonSet on every node (workers + control plane)
 nodeExporter:

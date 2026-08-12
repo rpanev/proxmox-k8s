@@ -8,10 +8,12 @@ target_node    = "node2"
 proxmox_nodes  = ["node1", "node2", "node3", "node4", "node5"]
 
 # ===== Storage =====
-ceph               = true
-ceph_datastore_id  = "ceph-prod"
-local_datastore_id = "local-lvm"
-create_pool        = true
+# Overridden by secrets.env → secrets.auto.tfvars (CEPH_STORAGE / PROXMOX_*)
+ceph                 = false
+ceph_datastore_id    = "ceph-prod"
+shared_storage       = true
+local_datastore_id   = "SSD-storage"
+create_pool          = true
 
 cloud_init_upgrade = false
 vm_numa         = true
