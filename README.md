@@ -72,6 +72,7 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 | `ARGOCD_BOOTSTRAP_ENABLED` | [argocd-bootstrap](docs/toggles/argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets](docs/toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader](docs/toggles/reloader.md) |
+| `METRICS_SERVER_ENABLED` | [metrics-server](docs/toggles/metrics-server.md) |
 | `VELERO_ENABLED` | [velero](docs/toggles/velero.md) (S3; keep off if using Kasten) |
 | `KASTEN_ENABLED` | [kasten](docs/toggles/kasten.md) (app backup → NFS; see [docs/backup.md](docs/backup.md)) |
 | `DATADOG_ENABLED` | [datadog](docs/toggles/datadog.md) |

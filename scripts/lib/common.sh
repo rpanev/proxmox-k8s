@@ -51,6 +51,7 @@ apply_platform_toggles() {
   export EXTERNAL_DNS_ENABLED="$(hcl_bool "${EXTERNAL_DNS_ENABLED:-true}")"
   export SEALED_SECRETS_ENABLED="$(hcl_bool "${SEALED_SECRETS_ENABLED:-true}")"
   export RELOADER_ENABLED="$(hcl_bool "${RELOADER_ENABLED:-true}")"
+  export METRICS_SERVER_ENABLED="$(hcl_bool "${METRICS_SERVER_ENABLED:-true}")"
   export ARGOCD_BOOTSTRAP_ENABLED="$(hcl_bool "${ARGOCD_BOOTSTRAP_ENABLED:-true}")"
   export PROMETHEUS_ENABLED="$(hcl_bool "${PROMETHEUS_ENABLED:-true}")"
   export ALERTMANAGER_ENABLED="$(hcl_bool "${ALERTMANAGER_ENABLED:-false}")"
@@ -61,7 +62,7 @@ apply_platform_toggles() {
     export LONGHORN_MOUNT_PATH="${LONGHORN_MOUNT_PATH:-/var/mnt/longhorn-data}"
   fi
 
-  echo "==> platform: os=${HOMELAB_OS:-linux} talos=${TALOS_ENABLED} ceph=${CEPH_STORAGE} shared=${PROXMOX_SHARED_STORAGE} datastore=${PROXMOX_DATASTORE_ID} tailscale=${TAILSCALE_ENABLED} longhorn=${LONGHORN_ENABLED} snapshot-controller=${SNAPSHOT_CONTROLLER_ENABLED} datadog=${DATADOG_ENABLED} prometheus=${PROMETHEUS_ENABLED} loki=${LOKI_ENABLED} trivy=${TRIVY_OPERATOR_ENABLED} alertmanager=${ALERTMANAGER_ENABLED} argocd=${ARGOCD_ENABLED} velero=${VELERO_ENABLED} kasten=${KASTEN_ENABLED} gateway=${GATEWAY_ENABLED} sealed-secrets=${SEALED_SECRETS_ENABLED} reloader=${RELOADER_ENABLED}"
+  echo "==> platform: os=${HOMELAB_OS:-linux} talos=${TALOS_ENABLED} ceph=${CEPH_STORAGE} shared=${PROXMOX_SHARED_STORAGE} datastore=${PROXMOX_DATASTORE_ID} tailscale=${TAILSCALE_ENABLED} longhorn=${LONGHORN_ENABLED} snapshot-controller=${SNAPSHOT_CONTROLLER_ENABLED} datadog=${DATADOG_ENABLED} prometheus=${PROMETHEUS_ENABLED} loki=${LOKI_ENABLED} trivy=${TRIVY_OPERATOR_ENABLED} alertmanager=${ALERTMANAGER_ENABLED} argocd=${ARGOCD_ENABLED} velero=${VELERO_ENABLED} kasten=${KASTEN_ENABLED} gateway=${GATEWAY_ENABLED} sealed-secrets=${SEALED_SECRETS_ENABLED} reloader=${RELOADER_ENABLED} metrics-server=${METRICS_SERVER_ENABLED}"
 }
 
 hcl_list() {
@@ -1554,6 +1555,36 @@ deploy_reloader() {
   helm_install_release "$(helm_stack_install_mode)" "${release}" "${namespace}" false "${helm_args[@]}"
 }
 
+deploy_metrics_server() {
+  if [[ "$(hcl_bool "${METRICS_SERVER_ENABLED:-true}")" != "true" ]]; then
+    echo "skip metrics-server (METRICS_SERVER_ENABLED=false)"
+    return 0
+  fi
+
+  local namespace="${METRICS_SERVER_NAMESPACE:-kube-system}"
+  local release="${METRICS_SERVER_RELEASE:-metrics-server}"
+  local helm_repo="${METRICS_SERVER_HELM_REPO:-https://kubernetes-sigs.github.io/metrics-server/}"
+  local chart="${METRICS_SERVER_CHART:-metrics-server/metrics-server}"
+  local wait_timeout="${METRICS_SERVER_WAIT_TIMEOUT:-5m}"
+  local values="${HOMELAB_ROOT}/helm-homelab/metrics-server/values.yaml"
+
+  ensure_helm_cli
+  echo "==> helm: metrics-server (${release}) → namespace ${namespace}"
+  helm_repo_ensure metrics-server "${helm_repo}"
+
+  local -a helm_args=(
+    upgrade --install "${release}" "${chart}"
+    --namespace "${namespace}"
+    --timeout "${wait_timeout}"
+    --hide-notes
+    -f "${values}"
+  )
+  if [[ -n "${METRICS_SERVER_CHART_VERSION:-}" ]]; then
+    helm_args+=(--version "${METRICS_SERVER_CHART_VERSION}")
+  fi
+  helm_install_release "$(helm_stack_install_mode)" "${release}" "${namespace}" false "${helm_args[@]}"
+}
+
 install_envoy_gateway_crds() {
   local crds_chart="${ENVOY_GATEWAY_CRDS_CHART:-oci://docker.io/envoyproxy/gateway-crds-helm}"
   local crds_version="${ENVOY_GATEWAY_CHART_VERSION:-1.8.1}"
@@ -2893,6 +2924,7 @@ deploy_helm_workloads_k3s() {
   echo "==> Helm stack (K3s sequential — one chart at a time)"
   deploy_sealed_secrets
   deploy_reloader
+  deploy_metrics_server
   deploy_tailscale_exporter
   deploy_datadog
   wait_for_etcd_cooldown
@@ -2923,6 +2955,7 @@ deploy_helm_workloads_talos() {
   helm_run_parallel \
     deploy_sealed_secrets \
     deploy_reloader \
+    deploy_metrics_server \
     deploy_tailscale_exporter \
     deploy_datadog \
     deploy_loki \

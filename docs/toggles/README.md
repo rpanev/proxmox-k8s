@@ -22,6 +22,7 @@ Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
 | `ARGOCD_BOOTSTRAP_ENABLED` | [argocd-bootstrap.md](argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets.md](sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader.md](reloader.md) |
+| `METRICS_SERVER_ENABLED` | [metrics-server.md](metrics-server.md) |
 | `VELERO_ENABLED` | [velero.md](velero.md) |
 | `KASTEN_ENABLED` | [kasten.md](kasten.md) |
 | `DATADOG_ENABLED` | [datadog.md](datadog.md) |

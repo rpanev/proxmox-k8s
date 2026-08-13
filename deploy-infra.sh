@@ -44,6 +44,7 @@ Platform toggles (secrets.env — true/false):
   ARGOCD_BOOTSTRAP_ENABLED  Argo app-of-apps from gitops/apps
   SEALED_SECRETS_ENABLED Sealed Secrets controller (GitOps secrets)
   RELOADER_ENABLED       Stakater Reloader
+  METRICS_SERVER_ENABLED Kubernetes Metrics API (kubectl top / Homepage)
   VELERO_ENABLED         Velero Helm (needs VELERO_S3_* MinIO credentials)
   KASTEN_ENABLED         Veeam Kasten K10 + NFS Location (KASTEN_NFS_*)
 

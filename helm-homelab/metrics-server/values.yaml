@@ -1,0 +1,8 @@
+# Metrics Server — Kubernetes Metrics API (metrics.k8s.io) for kubectl top
+# and Homepage. Extra args are merged with chart defaultArgs.
+#
+# Talos kubelets use kubelet-issued certs that metrics-server does not trust,
+# so insecure TLS to kubelet is required.
+
+args:
+  - --kubelet-insecure-tls

@@ -32,6 +32,7 @@ Fallback when `--os` is omitted: `TALOS_ENABLED`. See [platform-os-bg.md](platfo
 | `ARGOCD_BOOTSTRAP_ENABLED` | [toggles/argocd-bootstrap.md](toggles/argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [toggles/sealed-secrets.md](toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [toggles/reloader.md](toggles/reloader.md) |
+| `METRICS_SERVER_ENABLED` | [toggles/metrics-server.md](toggles/metrics-server.md) |
 | `VELERO_ENABLED` | [toggles/velero.md](toggles/velero.md) |
 | `KASTEN_ENABLED` | [toggles/kasten.md](toggles/kasten.md) |
 | `DATADOG_ENABLED` | [toggles/datadog.md](toggles/datadog.md) |
