@@ -5,6 +5,11 @@ See also: [toggles/tailscale.md](toggles/tailscale.md),
 
 Tailscale VPN into the cluster. Flag: `TAILSCALE_ENABLED`. Variables below.
 
+The Kubernetes operator provides MagicDNS HTTPS ingress for enabled platform
+UIs while the regular Gateway API HTTPRoutes remain active. These are parallel
+access paths to the same Services; neither the subnet router nor the Kubernetes
+API proxy is required for UI access.
+
 ```bash
 TAILSCALE_TAILNET=tail9822c.ts.net
 TAILSCALE_OAUTH_CLIENT_ID=kFFvrx2Ud411CNTRL
@@ -26,10 +31,39 @@ Additional flags available in `secrets.env.example` (defaults shown):
 | Variable | Default | Description |
 |----------|---------|--------------|
 | `TAILSCALE_APPLY_ACL` | `true` | Apply the repo's Tailscale ACL fragment on deploy. |
-| `TAILSCALE_SUBNET_ROUTER_ENABLED` | `true` | Advertise the LAN subnet through a Tailscale subnet router. |
+| `TAILSCALE_SUBNET_ROUTER_ENABLED` | `false` | Advertise the LAN subnet through a Tailscale subnet router. Enable temporarily for testing or when routed LAN/K8s access is required. |
 | `TAILSCALE_EXTRA_ROUTES` | _(unset)_ | Extra CIDRs to advertise (e.g. pod/service CIDRs `10.42.0.0/16,10.43.0.0/16`). |
 | `TAILSCALE_API_SERVER_PROXY` | `false` | Expose the Kubernetes API server through Tailscale. |
 | `TAILSCALE_LOGIN_SERVER` | _(unset)_ | Custom control server URL (e.g. Headscale). Empty = Tailscale SaaS. |
+
+## Application ingress
+
+When the corresponding workload is enabled, Tailscale publishes:
+
+- `https://argocd.<TAILSCALE_TAILNET>`
+- `https://longhorn.<TAILSCALE_TAILNET>`
+- `https://grafana.<TAILSCALE_TAILNET>`
+- `https://prometheus.<TAILSCALE_TAILNET>`
+- `https://kasten.<TAILSCALE_TAILNET>/k10/`
+
+These Ingresses coexist with the Gateway HTTPRoutes and do not require subnet
+routing. Argo CD and Longhorn create their Ingresses through Helm values;
+Grafana, Prometheus, and Kasten use templates under
+`helm-homelab/tailscale/manifests/ingresses/`.
+
+Setting `TAILSCALE_SUBNET_ROUTER_ENABLED=false` removes the managed Connector
+while leaving the operator and all application Ingress proxies running.
+
+### Deploy paths
+
+| Path | Installs operator | Reconciles application access |
+|------|-------------------|-------------------------------|
+| Full `--os=linux` | Yes, through `deploy.yml` | Yes |
+| Full `--os=talos` | No; run `deploy-tailscale.yml` separately | Yes |
+| `--helm-only` | No; existing operator required | Yes |
+| `deploy-tailscale.yml` | Yes; reuses existing kubeconfig | No |
+
+See [toggles/tailscale.md](toggles/tailscale.md) for the operator-only command.
 
 ---
 

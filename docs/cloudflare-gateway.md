@@ -6,6 +6,10 @@ DNS-01, external-dns for HTTPRoute A records. Needs `GATEWAY_ENABLED=true`
 [toggles/gateway.md](toggles/gateway.md) and
 [toggles/external-dns.md](toggles/external-dns.md).
 
+This LAN path can run in parallel with Tailscale MagicDNS ingress. Tailscale
+uses separate proxy pods and hostnames and does not replace the Gateway,
+MetalLB, Cloudflare DNS, or HTTPRoutes described here.
+
 ```bash
 # MetalLB IP on LAN — free address in 192.168.99.200-219 (210 = K8s API LB)
 GATEWAY_LB_IP=192.168.99.211

@@ -1,10 +1,12 @@
 # Platform toggles
 
 Each flag is `true` / `false` in `secrets.env`. Re-running deploy with a flag set
-to `false` **skips** that component — it does **not** uninstall it.
+to `false` normally **skips** that component — it does **not** uninstall it.
+`TAILSCALE_SUBNET_ROUTER_ENABLED=false` is an explicit exception: deploy removes
+the managed Connector while keeping Tailscale application ingress available.
 
 Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
-(or fallback `TALOS_ENABLED`). See [../platform-os-bg.md](../platform-os-bg.md).
+(or fallback `TALOS_ENABLED`).
 
 ## Index
 
@@ -46,6 +48,9 @@ CEPH_STORAGE=false + PROXMOX_SHARED_STORAGE
 GATEWAY_ENABLED
   └── EXTERNAL_DNS_ENABLED   (HTTPRoute → Cloudflare A records)
 
+GATEWAY_ENABLED + TAILSCALE_ENABLED
+  └── Parallel platform HTTPS (HTTPRoute + Tailscale Ingress → same Services)
+
 PROMETHEUS_ENABLED
   ├── LOKI_ENABLED           (Grafana Loki datasource)
   ├── ALERTMANAGER_ENABLED
@@ -56,6 +61,9 @@ ARGOCD_ENABLED
   └── ARGOCD_BOOTSTRAP_ENABLED
 
 TAILSCALE_ENABLED
+  ├── platform Tailscale Ingresses
+  ├── TAILSCALE_SUBNET_ROUTER_ENABLED (optional, default false)
+  ├── TAILSCALE_API_SERVER_PROXY (optional, default false)
   └── TAILSCALE_EXPORTER_ENABLED (also needs Prometheus)
 ```
 
@@ -69,6 +77,8 @@ Backup layers (Proxmox / Longhorn / Kasten): [../backup.md](../backup.md).
 | Helm install | `deploy_*` functions in `common.sh` |
 | Values | `helm-homelab/<component>/values.yaml` |
 | HTTPRoutes | `helm-homelab/gateway/manifests/httproutes/` |
+| Tailscale operator | `ansible/roles/tailscale_operator/`, `ansible/playbooks/deploy-tailscale.yml` |
+| Tailscale Ingresses | chart values for Argo CD / Longhorn; `helm-homelab/tailscale/manifests/ingresses/` for Grafana / Prometheus / Kasten |
 | Kasten NFS + policies | `helm-homelab/kasten/manifests/`, `apply_kasten_*` in `common.sh` |
 
 Also listed in: [../feature-flags.md](../feature-flags.md).

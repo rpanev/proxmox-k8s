@@ -30,6 +30,7 @@ cp secrets.env.example secrets.env   # fill secrets + toggles
 | Control plane | 3 leaders (`.220+`) — K3s or Talos |
 | Workers | 3 workers (`.230+`) + Longhorn data disk |
 | MetalLB / Gateway | Ingress `.211` → `*.GATEWAY_DOMAIN` |
+| Tailscale operator | Parallel VPN ingress → `*.TAILSCALE_TAILNET` |
 
 Full diagram and notes: [docs/architecture.md](docs/architecture.md) · [docs/img/](docs/img/).
 
@@ -41,8 +42,6 @@ Full diagram and notes: [docs/architecture.md](docs/architecture.md) · [docs/im
 | `talos` | `terrafrom/talos-linux/` | HAProxy on LB + `bootstrap-talos.sh` |
 
 CLI `--os=` overrides `TALOS_ENABLED` in `secrets.env`.
-
-Bulgarian walkthrough: [docs/platform-os-bg.md](docs/platform-os-bg.md).
 
 ## Config split
 
@@ -79,7 +78,9 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 | `TAILSCALE_EXPORTER_ENABLED` | [tailscale-exporter](docs/toggles/tailscale-exporter.md) |
 | `TRIVY_OPERATOR_ENABLED` | [trivy-operator](docs/toggles/trivy-operator.md) |
 
-Setting a flag to `false` **skips** install on the next deploy; it does **not** uninstall an already-running component.
+Setting a flag to `false` normally **skips** install on the next deploy; it does
+not uninstall an already-running component. The subnet-router option is an
+exception: `TAILSCALE_SUBNET_ROUTER_ENABLED=false` removes its managed Connector.
 
 ## Before you run
 
@@ -98,20 +99,25 @@ export KUBECONFIG=kubeconfigs/<ENV_ID>.kubeconfig
 kubectl get nodes
 ```
 
-With Gateway (`GATEWAY_DOMAIN=homelab.panev.cloud`):
+With Gateway and Tailscale enabled, both access paths target the same Services:
 
-| Service | URL |
-|---------|-----|
-| Grafana | `https://grafana.homelab.panev.cloud` |
-| Longhorn | `https://longhorn.homelab.panev.cloud` |
-| Kasten | `https://kasten.homelab.panev.cloud/k10/` |
-| Argo CD | `https://argocd.homelab.panev.cloud` |
+| Service | Gateway / LAN | Tailscale / VPN |
+|---------|---------------|-----------------|
+| Grafana | `https://grafana.homelab.panev.cloud` | `https://grafana.<TAILSCALE_TAILNET>` |
+| Prometheus | `https://prometheus.homelab.panev.cloud` | `https://prometheus.<TAILSCALE_TAILNET>` |
+| Longhorn | `https://longhorn.homelab.panev.cloud` | `https://longhorn.<TAILSCALE_TAILNET>` |
+| Kasten | `https://kasten.homelab.panev.cloud/k10/` | `https://kasten.<TAILSCALE_TAILNET>/k10/` |
+| Argo CD | `https://argocd.homelab.panev.cloud` | `https://argocd.<TAILSCALE_TAILNET>` |
 
 Helm-only re-run:
 
 ```bash
 ./deploy-infra.sh --helm-only --os=talos
 ```
+
+`--helm-only` reconciles application Ingress resources but does not install the
+Tailscale operator. A full Linux/K3s deploy installs it through Ansible; Talos
+uses the dedicated `ansible/playbooks/deploy-tailscale.yml` playbook.
 
 **Backup:** Longhorn stores PVC data; Kasten backs apps up to NAS NFS. They are
 different products — see [docs/backup.md](docs/backup.md).
@@ -127,6 +133,5 @@ different products — see [docs/backup.md](docs/backup.md).
 | [docs/toggles/](docs/toggles/README.md) | One page per platform toggle |
 | [docs/proxmox.md](docs/proxmox.md) | Proxmox API + templates |
 | [docs/platform.md](docs/platform.md) | Hostnames and sizing |
+| [docs/tailscale.md](docs/tailscale.md) | Tailscale operator, UI ingress, optional routing |
 | [docs/cloudflare-gateway.md](docs/cloudflare-gateway.md) | Gateway / TLS / DNS-01 |
-| [docs/platform-os-bg.md](docs/platform-os-bg.md) | OS choice (Bulgarian) |
-| [summary.md](summary.md) | Local operator notes (gitignored) |

@@ -22,18 +22,21 @@ DATADOG_CLUSTER_NAME=k8s-homelab
 
 ## Hostnames
 
-These are the **subdomain labels** for each service's HTTPRoute. The full FQDN is
-`<hostname>.<GATEWAY_DOMAIN>` (e.g. `grafana.homelab.panev.cloud`). external-dns
-creates the matching Cloudflare A record. See
-[cloudflare-gateway.md](cloudflare-gateway.md).
+These are the **subdomain labels** shared by the Gateway HTTPRoute and Tailscale
+Ingress. Gateway produces `<hostname>.<GATEWAY_DOMAIN>` and external-dns creates
+its Cloudflare A record. With `TAILSCALE_ENABLED=true`, the operator also
+produces `<hostname>.<TAILSCALE_TAILNET>` through MagicDNS.
 
-| Variable | Resulting URL (with `GATEWAY_DOMAIN=homelab.panev.cloud`) |
-|----------|-----------------------------------------------------------|
-| `ARGOCD_HOSTNAME` | `argocd.homelab.panev.cloud` |
-| `LONGHORN_HOSTNAME` | `longhorn.homelab.panev.cloud` |
-| `KASTEN_HOSTNAME` | `kasten.homelab.panev.cloud/k10/` |
-| `GRAFANA_HOSTNAME` | `grafana.homelab.panev.cloud` |
-| `PROMETHEUS_HOSTNAME` | `prometheus.homelab.panev.cloud` |
+| Variable | Gateway URL | Tailscale URL |
+|----------|-------------|---------------|
+| `ARGOCD_HOSTNAME` | `argocd.homelab.panev.cloud` | `argocd.<TAILSCALE_TAILNET>` |
+| `LONGHORN_HOSTNAME` | `longhorn.homelab.panev.cloud` | `longhorn.<TAILSCALE_TAILNET>` |
+| `KASTEN_HOSTNAME` | `kasten.homelab.panev.cloud/k10/` | `kasten.<TAILSCALE_TAILNET>/k10/` |
+| `GRAFANA_HOSTNAME` | `grafana.homelab.panev.cloud` | `grafana.<TAILSCALE_TAILNET>` |
+| `PROMETHEUS_HOSTNAME` | `prometheus.homelab.panev.cloud` | `prometheus.<TAILSCALE_TAILNET>` |
+
+See [cloudflare-gateway.md](cloudflare-gateway.md) and
+[tailscale.md](tailscale.md).
 
 ## Storage (Longhorn)
 
@@ -54,8 +57,9 @@ see [backup.md](backup.md).
 | `PROMETHEUS_RETENTION` | How long Prometheus keeps metrics (e.g. `15d`). Balance against disk size (`retentionSize` in the Helm values). |
 | `PROMETHEUS_WAIT_TIMEOUT` | How long the deploy waits for the monitoring stack to become ready (Helm `--timeout`). |
 
-> Grafana has no "how to generate" step — you choose the password. After deploy
-> log in at `https://<GRAFANA_HOSTNAME>.<GATEWAY_DOMAIN>` as `admin`.
+> Grafana has no "how to generate" step — you choose the password. Its Gateway
+> URL is canonical; the Tailscale URL is an additional entry point and may
+> redirect to the Gateway URL.
 
 ## Datadog (optional)
 

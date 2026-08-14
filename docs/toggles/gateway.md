@@ -25,6 +25,11 @@ LETSENCRYPT_STAGING=false
 
 Full TLS/DNS detail: [../cloudflare-gateway.md](../cloudflare-gateway.md).
 
+Gateway and Tailscale are independent access planes and can be enabled
+together. Gateway serves `<service>.<GATEWAY_DOMAIN>` through MetalLB; Tailscale
+serves `<service>.<TAILSCALE_TAILNET>` through operator-managed proxy pods.
+Both target the same ClusterIP Services.
+
 When `KASTEN_ENABLED=true`, deploy applies
 `helm-homelab/gateway/manifests/httproutes/kasten.yaml.tpl` →
 `https://kasten.<GATEWAY_DOMAIN>/k10/`.
@@ -47,6 +52,7 @@ Values / manifests: `helm-homelab/envoy-gateway/`, `helm-homelab/cert-manager/`,
 
 ```bash
 kubectl get gateway -A
+kubectl get httproute -A
 kubectl get certificate -A
 curl -kI https://grafana.${GATEWAY_DOMAIN}
 ```
@@ -54,4 +60,5 @@ curl -kI https://grafana.${GATEWAY_DOMAIN}
 ## Related
 
 - [external-dns.md](external-dns.md)
+- [tailscale.md](tailscale.md) — parallel VPN ingress
 - [../cloudflare-gateway.md](../cloudflare-gateway.md) — Universal SSL / DNS-01 pitfalls

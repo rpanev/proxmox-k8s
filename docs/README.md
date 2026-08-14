@@ -19,10 +19,9 @@ how components fit together.
 | Doc | Description |
 |-----|-------------|
 | [proxmox.md](proxmox.md) | Proxmox API token, templates, pool |
-| [platform-os-bg.md](platform-os-bg.md) | `--os=linux\|talos` (Bulgarian) |
 | [platform.md](platform.md) | Hostnames, sizing, Grafana / Kasten |
 | [cloudflare-gateway.md](cloudflare-gateway.md) | Gateway API, MetalLB, DNS-01, Universal SSL |
-| [k3s-customization-plan.md](k3s-customization-plan.md) | K3s hardening roadmap |
+| [tailscale.md](tailscale.md) | Parallel MagicDNS UI ingress, optional subnet/API routing |
 
 ## Backup (app data)
 

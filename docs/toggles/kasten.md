@@ -70,15 +70,17 @@ after the next `deploy-infra` / `deploy_kasten`.
 
 ## UI
 
-With Gateway:
+With Gateway and Tailscale enabled, both URLs target the same Kasten service:
 
 ```text
-https://kasten.<GATEWAY_DOMAIN>/k10/
+LAN: https://kasten.<GATEWAY_DOMAIN>/k10/
+VPN: https://kasten.<TAILSCALE_TAILNET>/k10/
 ```
 
-(`/` redirects to `/k10/`. Override host with `KASTEN_HOSTNAME`.)
+The Gateway URL redirects `/` to `/k10/`. Use `/k10/` explicitly on the
+Tailscale URL. Override the host label with `KASTEN_HOSTNAME`.
 
-Without Gateway:
+Without either Gateway or Tailscale:
 
 ```bash
 kubectl -n kasten-io port-forward svc/gateway 8080:80

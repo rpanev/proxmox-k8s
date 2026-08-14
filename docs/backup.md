@@ -22,7 +22,8 @@ Proxmox nodes
 | | Longhorn | Kasten (K10) |
 |--|----------|--------------|
 | Job | Provide disks (PVC → replicas on workers) | Backup / restore / export apps |
-| UI | `https://longhorn.<GATEWAY_DOMAIN>` | `https://kasten.<GATEWAY_DOMAIN>/k10/` |
+| Gateway UI | `https://longhorn.<GATEWAY_DOMAIN>` | `https://kasten.<GATEWAY_DOMAIN>/k10/` |
+| Tailscale UI | `https://longhorn.<TAILSCALE_TAILNET>` | `https://kasten.<TAILSCALE_TAILNET>/k10/` |
 | Needs the other? | No | Yes — PVC data via CSI snapshots on Longhorn |
 
 Flow on a Kasten backup of a namespace with PVCs:

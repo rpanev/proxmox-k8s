@@ -8,7 +8,9 @@
 deploy-infra.sh
   → Terraform (Proxmox VMs)
   → Ansible (K3s)  OR  Ansible HAProxy + bootstrap-talos.sh (Talos)
-  → Helm platform stack (feature toggles)
+  → Tailscale operator through K3s Ansible
+    OR deploy-tailscale.yml after Talos bootstrap
+  → Helm platform stack (Gateway HTTPRoutes + Tailscale Ingresses)
 ```
 
 Core logic: `scripts/lib/common.sh`. Orchestrators: `deploy-infra.sh`,
@@ -25,8 +27,24 @@ Assumes `IP_BASE=172.16.33`, `ENV_ID=k8s-homelab`, `LEADER_COUNT=3`,
 | Control plane | `…-leader-01..03` | `.220–.222` | K3s or Talos |
 | Workers | `…-worker-01..03` | `.230–.232` | Longhorn data disk |
 | Gateway | MetalLB | `.211` | Envoy Gateway HTTP(S) |
+| Tailscale ingress | Operator proxy pods | Tailnet IPs | MagicDNS HTTPS for platform UIs |
 
 API LB is `.210`; ingress/MetalLB is `.211` — different roles.
+
+## Application access
+
+Platform UIs can use two independent front doors at the same time:
+
+```text
+LAN client      → <service>.<GATEWAY_DOMAIN>   → MetalLB / Envoy HTTPRoute
+Tailscale client → <service>.<TAILSCALE_TAILNET> → Tailscale Ingress proxy
+                                                    ↓
+                                          same ClusterIP Service
+```
+
+The optional subnet router advertises LAN/K8s CIDRs and is not required for
+these MagicDNS UI URLs. It defaults to disabled, as does the optional Kubernetes
+API proxy.
 
 ## Proxmox
 
@@ -67,5 +85,4 @@ Typical critical path when Kasten is on:
 
 - [getting-started.md](getting-started.md)
 - [backup.md](backup.md)
-- [platform-os-bg.md](platform-os-bg.md)
 - [../summary.md](../summary.md)

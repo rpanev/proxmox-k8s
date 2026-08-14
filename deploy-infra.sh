@@ -53,6 +53,7 @@ Default (no flags):
   3. ansible inventory (hosts.yml)
   4a. --os=linux:  ansible deploy.yml (K3s → workers → Tailscale operator)
   4b. --os=talos:  ansible HAProxy on LB → talosctl bootstrap
+                    (run deploy-tailscale.yml separately for the operator)
   5. fetch kubeconfig (K3s via SSH or Talos via talosctl)
   6. helm workloads (Gateway, Longhorn, Argo CD, …) — same toggles as K3s path
   7. cluster summary
@@ -68,6 +69,7 @@ Options:
   -y, --yes           Skip terraform apply confirmation
   --infra-only        Terraform + inventory only, skip Ansible
   --helm-only         Skip Terraform/Ansible; deploy Helm workloads only
+                      (never installs Tailscale operator; existing one required)
   --serial-clones     Force terraform -parallelism=1 (auto when CEPH_STORAGE=true)
   -h, --help          Show this help
 

@@ -1,4 +1,5 @@
-# Argo CD — homelab defaults (hostname set at deploy via --set server.ingress.hostname)
+# Argo CD — Tailscale Ingress when enabled; Gateway HTTPRoute is applied separately.
+# Hostname is set at deploy via --set server.ingress.hostname.
 configs:
   params:
     # Tailscale Ingress terminates TLS; backend speaks HTTP on port 80

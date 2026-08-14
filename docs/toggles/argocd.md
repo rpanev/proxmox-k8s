@@ -14,6 +14,7 @@ ARGOCD_HOSTNAME=argocd
 
 - Helm release in namespace `argocd`
 - HTTPRoute when Gateway is enabled
+- Parallel MagicDNS HTTPS Ingress when Tailscale is enabled
 - ServiceMonitors for Grafana dashboard **19993** (needs Prometheus)
 
 ## Configuration
@@ -30,7 +31,9 @@ Initial admin password: standard Argo CD secret
 
 ```bash
 kubectl get pods -n argocd
-# https://argocd.<GATEWAY_DOMAIN>
+kubectl get ingress argocd-server -n argocd
+# LAN: https://argocd.<GATEWAY_DOMAIN>
+# VPN: https://argocd.<TAILSCALE_TAILNET>
 ```
 
 ## Related

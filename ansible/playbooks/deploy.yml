@@ -61,6 +61,7 @@
   roles:
     - role: longhorn_disk
 
+# K3s full deploy only; Talos uses playbooks/deploy-tailscale.yml separately.
 - name: Tailscale Kubernetes Operator (cluster pods only — runs on deploy host)
   hosts: localhost
   connection: local

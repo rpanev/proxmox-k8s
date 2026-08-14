@@ -14,7 +14,7 @@ tailscale_login_server: ""
 tailscale_api_server_proxy: false
 tailscale_tailnet: ""
 tailscale_proxy_tag: ""
-tailscale_subnet_router_enabled: true
+tailscale_subnet_router_enabled: false
 tailscale_connector_name: ""
 tailscale_connector_hostname: ""
 tailscale_advertise_routes: []

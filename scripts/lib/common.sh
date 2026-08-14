@@ -311,7 +311,7 @@ write_ansible_tailscale_vars() {
     : "${TAILSCALE_OAUTH_CLIENT_ID:?TAILSCALE_OAUTH_CLIENT_ID required when TAILSCALE_ENABLED=true}"
     : "${TAILSCALE_OAUTH_CLIENT_SECRET:?TAILSCALE_OAUTH_CLIENT_SECRET required when TAILSCALE_ENABLED=true}"
     local subnet_router_enabled
-    subnet_router_enabled="$(hcl_bool "${TAILSCALE_SUBNET_ROUTER_ENABLED:-true}")"
+    subnet_router_enabled="$(hcl_bool "${TAILSCALE_SUBNET_ROUTER_ENABLED:-false}")"
     local extra_routes_block=""
     if [[ -n "${TAILSCALE_EXTRA_ROUTES:-}" ]]; then
       extra_routes_block="tailscale_extra_routes:"
@@ -1901,6 +1901,51 @@ apply_platform_httproutes() {
   done
 }
 
+delete_tailscale_ingress() {
+  local namespace="${1:?namespace required}"
+  local name="${2:?ingress name required}"
+  if kubectl get namespace "${namespace}" >/dev/null 2>&1; then
+    kubectl delete ingress "${name}" -n "${namespace}" --ignore-not-found >/dev/null
+  fi
+}
+
+apply_platform_tailscale_ingresses() {
+  local prometheus_namespace="${PROMETHEUS_NAMESPACE:-monitoring}"
+  local kasten_namespace="${KASTEN_NAMESPACE:-kasten-io}"
+  local ingress_dir="${HOMELAB_ROOT}/helm-homelab/tailscale/manifests/ingresses"
+
+  export PROMETHEUS_NAMESPACE="${prometheus_namespace}"
+  export PROMETHEUS_RELEASE="${PROMETHEUS_RELEASE:-prometheus}"
+  export GRAFANA_HOSTNAME="${GRAFANA_HOSTNAME:-grafana}"
+  export PROMETHEUS_HOSTNAME="${PROMETHEUS_HOSTNAME:-prometheus}"
+  export KASTEN_NAMESPACE="${kasten_namespace}"
+  export KASTEN_HOSTNAME="${KASTEN_HOSTNAME:-kasten}"
+
+  if [[ "$(hcl_bool "${TAILSCALE_ENABLED:-false}")" != "true" ]]; then
+    delete_tailscale_ingress "${prometheus_namespace}" grafana-tailscale
+    delete_tailscale_ingress "${prometheus_namespace}" prometheus-tailscale
+    delete_tailscale_ingress "${kasten_namespace}" kasten-tailscale
+    return 0
+  fi
+
+  : "${TAILSCALE_TAILNET:?TAILSCALE_TAILNET required when TAILSCALE_ENABLED=true}"
+  echo "==> platform Tailscale ingresses"
+
+  if [[ "$(hcl_bool "${PROMETHEUS_ENABLED:-true}")" == "true" ]]; then
+    apply_manifest_template "${ingress_dir}/grafana.yaml.tpl"
+    apply_manifest_template "${ingress_dir}/prometheus.yaml.tpl"
+  else
+    delete_tailscale_ingress "${prometheus_namespace}" grafana-tailscale
+    delete_tailscale_ingress "${prometheus_namespace}" prometheus-tailscale
+  fi
+
+  if [[ "$(hcl_bool "${KASTEN_ENABLED:-false}")" == "true" ]]; then
+    apply_manifest_template "${ingress_dir}/kasten.yaml.tpl"
+  else
+    delete_tailscale_ingress "${kasten_namespace}" kasten-tailscale
+  fi
+}
+
 detect_gitops_repo_url() {
   local url="${GITOPS_REPO_URL:-}"
   if [[ -n "${url}" ]]; then
@@ -2580,10 +2625,14 @@ show_prometheus_summary() {
     return 0
   fi
 
-  local domain gateway alertmanager
+  local domain gateway alertmanager tailnet tailscale grafana_hostname prometheus_hostname
   domain="${GATEWAY_DOMAIN:-}"
   gateway="$(hcl_bool "${GATEWAY_ENABLED:-true}")"
   alertmanager="$(hcl_bool "${ALERTMANAGER_ENABLED:-false}")"
+  tailnet="${TAILSCALE_TAILNET:-}"
+  tailscale="$(hcl_bool "${TAILSCALE_ENABLED:-false}")"
+  grafana_hostname="${GRAFANA_HOSTNAME:-grafana}"
+  prometheus_hostname="${PROMETHEUS_HOSTNAME:-prometheus}"
 
   echo ""
   echo "================================================================"
@@ -2594,9 +2643,14 @@ show_prometheus_summary() {
   echo "  Cluster:     kube-state-metrics + Kubernetes / K3s targets"
   echo "  Alertmanager: ${alertmanager}"
   if [[ "${gateway}" == "true" ]] && [[ -n "${domain}" ]]; then
-    echo "  Grafana:     https://grafana.${domain}  (admin / secrets.env)"
-    echo "  Prometheus:  https://prometheus.${domain}"
-  else
+    echo "  Grafana (LAN):     https://grafana.${domain}  (admin / secrets.env)"
+    echo "  Prometheus (LAN):  https://prometheus.${domain}"
+  fi
+  if [[ "${tailscale}" == "true" ]] && [[ -n "${tailnet}" ]]; then
+    echo "  Grafana (VPN):     https://${grafana_hostname}.${tailnet}  (Gateway URL remains canonical)"
+    echo "  Prometheus (VPN):  https://${prometheus_hostname}.${tailnet}"
+  fi
+  if [[ "${gateway}" != "true" ]] && [[ "${tailscale}" != "true" ]]; then
     echo "  Grafana:     kubectl -n ${PROMETHEUS_NAMESPACE:-monitoring} port-forward svc/${PROMETHEUS_RELEASE:-prometheus}-grafana 3000:80"
     echo "  Prometheus:  kubectl -n ${PROMETHEUS_NAMESPACE:-monitoring} port-forward svc/${PROMETHEUS_RELEASE:-prometheus}-kube-prometheus-prometheus 9090:9090"
   fi
@@ -2872,6 +2926,7 @@ finalize_snapshot_controller_monitoring() {
 
 deploy_helm_finish() {
   apply_platform_httproutes
+  apply_platform_tailscale_ingresses
   bootstrap_argocd
   deploy_external_dns
   echo "==> finish (Promtail + TLS cert in parallel)"
@@ -3692,7 +3747,7 @@ show_kasten_summary() {
     return 0
   fi
 
-  local namespace profile server path domain hostname gateway
+  local namespace profile server path domain hostname gateway tailnet tailscale
   namespace="${KASTEN_NAMESPACE:-kasten-io}"
   profile="${KASTEN_LOCATION_PROFILE:-nfs-k8s-dr}"
   server="${KASTEN_NFS_SERVER:-}"
@@ -3700,6 +3755,8 @@ show_kasten_summary() {
   domain="${GATEWAY_DOMAIN:-}"
   hostname="${KASTEN_HOSTNAME:-kasten}"
   gateway="$(hcl_bool "${GATEWAY_ENABLED:-true}")"
+  tailnet="${TAILSCALE_TAILNET:-}"
+  tailscale="$(hcl_bool "${TAILSCALE_ENABLED:-false}")"
 
   echo ""
   echo "================================================================"
@@ -3708,7 +3765,11 @@ show_kasten_summary() {
   echo ""
   if [[ "${gateway}" == "true" ]] && [[ -n "${domain}" ]]; then
     echo "  UI (LAN):  https://${hostname}.${domain}/k10/"
-  else
+  fi
+  if [[ "${tailscale}" == "true" ]] && [[ -n "${tailnet}" ]]; then
+    echo "  UI (VPN):  https://${hostname}.${tailnet}/k10/"
+  fi
+  if [[ "${gateway}" != "true" ]] && [[ "${tailscale}" != "true" ]]; then
     echo "  UI:       kubectl -n ${namespace} port-forward svc/gateway 8080:80"
     echo "            → http://127.0.0.1:8080/k10/#/"
   fi

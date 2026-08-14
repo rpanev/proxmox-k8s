@@ -20,7 +20,8 @@ LONGHORN_HOSTNAME=longhorn
 - **K3s:** Ansible `longhorn_disk` formats/mounts the disk
 - **Talos:** `bootstrap-talos.sh` UserVolumeConfig mounts the same path
 - Helm chart `longhorn` → namespace `longhorn-system`
-- HTTPRoute when Gateway is on: `https://longhorn.<GATEWAY_DOMAIN>`
+- Gateway HTTPRoute: `https://longhorn.<GATEWAY_DOMAIN>`
+- Tailscale Ingress: `https://longhorn.<TAILSCALE_TAILNET>`
 
 Longhorn UI **Nodes** = workers with a data disk (e.g. 3), not Proxmox host count.
 **Volumes** = PVC count using the `longhorn` StorageClass.
@@ -37,7 +38,7 @@ See [../backup.md](../backup.md).
 | `WORKER_DATA_DISK_GB` | Size of worker data disk |
 | `LONGHORN_MOUNT_PATH` | Mount path (same on K3s and Talos) |
 | `LONGHORN_DATA_DISK_FSTYPE` | `xfs` or `ext4` (K3s Ansible) |
-| `LONGHORN_HOSTNAME` | HTTPRoute subdomain label |
+| `LONGHORN_HOSTNAME` | Shared Gateway / Tailscale hostname label |
 | `LONGHORN_WAIT_TIMEOUT` | Helm wait budget |
 | Helm values | `helm-homelab/longhorn/values.yaml` |
 
@@ -51,6 +52,7 @@ installer schematic, or bake them into the template) — see [proxmox.md](../pro
 kubectl get pods -n longhorn-system
 kubectl get sc longhorn
 kubectl get nodes.longhorn.io -n longhorn-system
+kubectl get ingress longhorn-ingress -n longhorn-system
 ```
 
 ## Related

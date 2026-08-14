@@ -32,8 +32,11 @@
     tailscale_connector_hostname_effective: "{{ tailscale_connector_hostname }}"
     tailscale_advertise_routes_effective: "{{ [homelab_network_cidr] + (tailscale_extra_routes | default([])) }}"
 
+# Reuse a prior deploy's kubeconfig; fetch only when the file is missing.
 - name: Fetch admin kubeconfig from cluster (SSH to leader, no Tailscale on nodes)
   ansible.builtin.command: "{{ homelab_root }}/scripts/fetch-kubeconfig.sh"
+  args:
+    creates: "{{ operator_kubeconfig_path }}"
   environment:
     HOMELAB_ROOT: "{{ homelab_root }}"
   changed_when: false
@@ -107,7 +110,17 @@
 
 - name: Deploy Tailscale subnet router for homelab LAN
   ansible.builtin.include_tasks: subnet-router.yml
-  when: tailscale_subnet_router_enabled | default(true) | bool
+  when: tailscale_subnet_router_enabled | default(false) | bool
+
+- name: Remove Tailscale subnet router when disabled
+  ansible.builtin.command: >
+    kubectl delete connector {{ tailscale_connector_name_effective }}
+    --ignore-not-found
+  environment:
+    KUBECONFIG: "{{ operator_kubeconfig_path }}"
+  register: connector_delete
+  changed_when: "'deleted' in connector_delete.stdout"
+  when: not (tailscale_subnet_router_enabled | default(false) | bool)
 
 - name: Tailscale operator summary
   ansible.builtin.debug:
@@ -116,4 +129,4 @@
       - "No tailscale client installed on deploy host or K3s VM nodes"
       - "IngressClass: tailscale (use ingressClassName: tailscale on Ingress resources)"
       - "Proxy devices tagged: {{ tailscale_proxy_tag_effective }} (environment {{ env_id }})"
-      - "Subnet router: {{ tailscale_connector_name_effective }} → {{ tailscale_advertise_routes_effective | join(', ') }}"
+      - "Subnet router: {{ (tailscale_connector_name_effective ~ ' → ' ~ (tailscale_advertise_routes_effective | join(', '))) if (tailscale_subnet_router_enabled | default(false) | bool) else 'disabled' }}"

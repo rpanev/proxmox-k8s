@@ -1,5 +1,5 @@
 ---
-# Tailscale operator — requires working kubeconfig on deploy host.
+# Tailscale operator — reuses kubeconfigs/<ENV_ID>.kubeconfig when present.
 
 - name: Tailscale Kubernetes Operator (cluster pods only)
   hosts: localhost

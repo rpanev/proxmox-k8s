@@ -3,7 +3,9 @@
 Per-flag notes: [toggles/](toggles/README.md).
 
 Toggles are `true` / `false` in `secrets.env`. `false` skips that `deploy_*`
-step on the next run; it does not uninstall something already deployed.
+step on the next run; it normally does not uninstall something already deployed.
+The managed Tailscale Connector is removed when
+`TAILSCALE_SUBNET_ROUTER_ENABLED=false`.
 
 ## Platform OS
 
@@ -14,7 +16,7 @@ Not a `secrets.env` toggle — use CLI:
 ./deploy-infra.sh -y --os=talos
 ```
 
-Fallback when `--os` is omitted: `TALOS_ENABLED`. See [platform-os-bg.md](platform-os-bg.md).
+Fallback when `--os` is omitted: `TALOS_ENABLED`.
 
 ## Quick list
 
@@ -36,6 +38,8 @@ Fallback when `--os` is omitted: `TALOS_ENABLED`. See [platform-os-bg.md](platfo
 | `KASTEN_ENABLED` | [toggles/kasten.md](toggles/kasten.md) |
 | `DATADOG_ENABLED` | [toggles/datadog.md](toggles/datadog.md) |
 | `TAILSCALE_ENABLED` | [toggles/tailscale.md](toggles/tailscale.md) |
+| `TAILSCALE_SUBNET_ROUTER_ENABLED` | [toggles/tailscale.md](toggles/tailscale.md) (optional, default `false`) |
+| `TAILSCALE_API_SERVER_PROXY` | [toggles/tailscale.md](toggles/tailscale.md) (optional, default `false`) |
 | `TAILSCALE_EXPORTER_ENABLED` | [toggles/tailscale-exporter.md](toggles/tailscale-exporter.md) |
 | `TRIVY_OPERATOR_ENABLED` | [toggles/trivy-operator.md](toggles/trivy-operator.md) |
 
