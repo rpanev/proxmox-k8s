@@ -21,7 +21,6 @@ Platform OS is **not** a toggle: use `./deploy-infra.sh --os=linux|talos`
 | `ALERTMANAGER_ENABLED` | [alertmanager.md](alertmanager.md) |
 | `LOKI_ENABLED` | [loki.md](loki.md) |
 | `ARGOCD_ENABLED` | [argocd.md](argocd.md) |
-| `ARGOCD_BOOTSTRAP_ENABLED` | [argocd-bootstrap.md](argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets.md](sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader.md](reloader.md) |
 | `VELERO_ENABLED` | [velero.md](velero.md) |
@@ -56,9 +55,6 @@ PROMETHEUS_ENABLED
   ├── ALERTMANAGER_ENABLED
   ├── TRIVY_OPERATOR_ENABLED
   └── TAILSCALE_EXPORTER_ENABLED
-
-ARGOCD_ENABLED
-  └── ARGOCD_BOOTSTRAP_ENABLED
 
 TAILSCALE_ENABLED
   ├── platform Tailscale Ingresses

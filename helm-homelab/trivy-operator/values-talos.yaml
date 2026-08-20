@@ -1,10 +1,57 @@
 # Talos overlay — immutable OS; node-collector hostPath mounts fail on Talos workers.
 # Workload vulnerability scanning (Grafana 16337) is unchanged.
+#
+# containerd mkdir's hostPath destinations on the node. Talos has no /etc/systemd
+# or /lib/systemd, and the root FS is read-only, so the default chart mounts fail:
+#   failed to mkdir "/etc/systemd": read-only file system
+# Drop those volumes even if infra/compliance scanners are re-enabled later.
+# https://github.com/aquasecurity/trivy-operator/discussions/1326
 operator:
   infraAssessmentScannerEnabled: false
   clusterComplianceEnabled: false
   rbacAssessmentScannerEnabled: false
-  scanNodeCollectorLimit: 0
+
+# Stop installing CIS/NSA ClusterComplianceReport CRs (they trigger node-collector).
+compliance:
+  specs: []
 
 nodeCollector:
   useNodeSelector: false
+  volumeMounts:
+    - name: var-lib-etcd
+      mountPath: /var/lib/etcd
+      readOnly: true
+    - name: var-lib-kubelet
+      mountPath: /var/lib/kubelet
+      readOnly: true
+    - name: var-lib-kube-scheduler
+      mountPath: /var/lib/kube-scheduler
+      readOnly: true
+    - name: var-lib-kube-controller-manager
+      mountPath: /var/lib/kube-controller-manager
+      readOnly: true
+    - name: etc-kubernetes
+      mountPath: /etc/kubernetes
+      readOnly: true
+    - name: etc-cni-netd
+      mountPath: /etc/cni/net.d/
+      readOnly: true
+  volumes:
+    - name: var-lib-etcd
+      hostPath:
+        path: /var/lib/etcd
+    - name: var-lib-kubelet
+      hostPath:
+        path: /var/lib/kubelet
+    - name: var-lib-kube-scheduler
+      hostPath:
+        path: /var/lib/kube-scheduler
+    - name: var-lib-kube-controller-manager
+      hostPath:
+        path: /var/lib/kube-controller-manager
+    - name: etc-kubernetes
+      hostPath:
+        path: /etc/kubernetes
+    - name: etc-cni-netd
+      hostPath:
+        path: /etc/cni/net.d/

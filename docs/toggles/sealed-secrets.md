@@ -34,4 +34,3 @@ kubectl get crd sealedsecrets.bitnami.com
 ## Related
 
 - [argocd.md](argocd.md)
-- [argocd-bootstrap.md](argocd-bootstrap.md)

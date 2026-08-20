@@ -68,7 +68,6 @@ Each `*_ENABLED` flag has its own doc under [docs/toggles/](docs/toggles/README.
 | `ALERTMANAGER_ENABLED` | [alertmanager](docs/toggles/alertmanager.md) |
 | `LOKI_ENABLED` | [loki](docs/toggles/loki.md) |
 | `ARGOCD_ENABLED` | [argocd](docs/toggles/argocd.md) |
-| `ARGOCD_BOOTSTRAP_ENABLED` | [argocd-bootstrap](docs/toggles/argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [sealed-secrets](docs/toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [reloader](docs/toggles/reloader.md) |
 | `VELERO_ENABLED` | [velero](docs/toggles/velero.md) (S3; keep off if using Kasten) |

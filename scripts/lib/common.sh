@@ -51,7 +51,6 @@ apply_platform_toggles() {
   export EXTERNAL_DNS_ENABLED="$(hcl_bool "${EXTERNAL_DNS_ENABLED:-true}")"
   export SEALED_SECRETS_ENABLED="$(hcl_bool "${SEALED_SECRETS_ENABLED:-true}")"
   export RELOADER_ENABLED="$(hcl_bool "${RELOADER_ENABLED:-true}")"
-  export ARGOCD_BOOTSTRAP_ENABLED="$(hcl_bool "${ARGOCD_BOOTSTRAP_ENABLED:-true}")"
   export PROMETHEUS_ENABLED="$(hcl_bool "${PROMETHEUS_ENABLED:-true}")"
   export ALERTMANAGER_ENABLED="$(hcl_bool "${ALERTMANAGER_ENABLED:-false}")"
   export LOKI_ENABLED="$(hcl_bool "${LOKI_ENABLED:-false}")"
@@ -601,6 +600,16 @@ run_ansible_promtail() {
 
 kubeconfig_path() {
   echo "${HOMELAB_ROOT}/kubeconfigs/${ENV_ID}.kubeconfig"
+}
+
+# True when the live kubeconfig is a Talos cluster (osImage contains "Talos").
+# helm-only often omits --os=talos, and TALOS_ENABLED defaults false in secrets.env.
+cluster_os_is_talos() {
+  local kubeconfig os_image
+  kubeconfig="${KUBECONFIG:-$(kubeconfig_path)}"
+  [[ -f "${kubeconfig}" ]] || return 1
+  os_image="$(KUBECONFIG="${kubeconfig}" kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.osImage}{" "}{end}' 2>/dev/null || true)"
+  grep -qi talos <<<"${os_image}"
 }
 
 fetch_kubeconfig() {
@@ -1946,50 +1955,6 @@ apply_platform_tailscale_ingresses() {
   fi
 }
 
-detect_gitops_repo_url() {
-  local url="${GITOPS_REPO_URL:-}"
-  if [[ -n "${url}" ]]; then
-    echo "${url}"
-    return 0
-  fi
-  if git -C "${HOMELAB_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    url="$(git -C "${HOMELAB_ROOT}" remote get-url origin 2>/dev/null || true)"
-    if [[ -n "${url}" ]]; then
-      echo "${url}"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-bootstrap_argocd() {
-  if [[ "$(hcl_bool "${ARGOCD_BOOTSTRAP_ENABLED:-true}")" != "true" ]]; then
-    echo "skip Argo CD bootstrap (ARGOCD_BOOTSTRAP_ENABLED=false)"
-    return 0
-  fi
-  if [[ "$(hcl_bool "${ARGOCD_ENABLED:-true}")" != "true" ]]; then
-    echo "skip Argo CD bootstrap (ARGOCD_ENABLED=false)"
-    return 0
-  fi
-
-  local repo_url
-  if ! repo_url="$(detect_gitops_repo_url)"; then
-    echo "skip Argo CD bootstrap — set GITOPS_REPO_URL in secrets.env or add git remote origin" >&2
-    return 0
-  fi
-
-  export GITOPS_REPO_URL="${repo_url}"
-  export GITOPS_REPO_BRANCH="${GITOPS_REPO_BRANCH:-main}"
-  export GITOPS_APPS_PATH="${GITOPS_APPS_PATH:-gitops/apps}"
-
-  echo "==> Argo CD bootstrap (app-of-apps)"
-  echo "    repo: ${GITOPS_REPO_URL}"
-  echo "    path: ${GITOPS_APPS_PATH} @ ${GITOPS_REPO_BRANCH}"
-
-  kubectl apply -f "${HOMELAB_ROOT}/gitops/bootstrap/appproject.yaml"
-  apply_manifest_template "${HOMELAB_ROOT}/gitops/bootstrap/root-application.yaml.tpl"
-}
-
 show_gateway_summary() {
   load_secrets
   if [[ "$(hcl_bool "${GATEWAY_ENABLED:-true}")" != "true" ]]; then
@@ -2562,14 +2527,27 @@ deploy_trivy_operator() {
     --hide-notes
     -f "${values}"
   )
-  if [[ "$(hcl_bool "${TALOS_ENABLED:-false}")" == "true" && -f "${values_talos}" ]]; then
-    echo "    talos: disable node-collector compliance (immutable root FS)"
+  local use_talos_overlay=false
+  if [[ "$(hcl_bool "${TALOS_ENABLED:-false}")" == "true" ]]; then
+    use_talos_overlay=true
+  elif cluster_os_is_talos; then
+    use_talos_overlay=true
+    echo "    talos: detected from node OS image (overlay even without --os=talos)"
+  fi
+  if [[ "${use_talos_overlay}" == "true" && -f "${values_talos}" ]]; then
+    echo "    talos: drop systemd hostPath mounts (immutable root FS)"
     helm_args+=(-f "${values_talos}")
   fi
   if [[ -n "${TRIVY_OPERATOR_CHART_VERSION:-}" ]]; then
     helm_args+=(--version "${TRIVY_OPERATOR_CHART_VERSION}")
   fi
   helm_install_release "$(helm_stack_install_mode)" "${release}" "${namespace}" true "${helm_args[@]}"
+  if [[ "${use_talos_overlay}" == "true" ]]; then
+    # Jobs keep the chart's default /etc/systemd hostPath until deleted; label is app=node-collector.
+    kubectl delete jobs,pods -n "${namespace}" -l app=node-collector --ignore-not-found=true >/dev/null 2>&1 || true
+    kubectl delete pods -n "${namespace}" --field-selector=status.phase=Failed --ignore-not-found=true >/dev/null 2>&1 || true
+    kubectl delete clusterinfraassessmentreports --all --ignore-not-found=true >/dev/null 2>&1 || true
+  fi
 }
 
 deploy_loki() {
@@ -2927,7 +2905,6 @@ finalize_snapshot_controller_monitoring() {
 deploy_helm_finish() {
   apply_platform_httproutes
   apply_platform_tailscale_ingresses
-  bootstrap_argocd
   deploy_external_dns
   echo "==> finish (Promtail + TLS cert in parallel)"
   helm_run_parallel wait_for_gateway_tls_certificate run_ansible_promtail
@@ -3232,6 +3209,41 @@ show_longhorn_summary() {
   echo ""
 }
 
+# GitLab group prefix → Argo CD repo-creds Secret (private git). Token stays in
+# secrets.env, not in git. url is a PREFIX: every repo under it inherits creds.
+apply_argocd_repo_creds() {
+  local namespace="${1:-${ARGOCD_NAMESPACE:-argocd}}"
+  local url="${ARGOCD_GITLAB_URL:-}"
+  local token="${ARGOCD_GITLAB_TOKEN:-}"
+  local username="${ARGOCD_GITLAB_USERNAME:-oauth2}"
+  local name="${ARGOCD_GITLAB_SECRET_NAME:-argocd-repo-gitlab}"
+
+  if [[ -z "${url}" || -z "${token}" ]]; then
+    echo "skip Argo CD GitLab repo-creds (set ARGOCD_GITLAB_URL and ARGOCD_GITLAB_TOKEN)"
+    return 0
+  fi
+
+  url="${url%/}"
+  url="${url%.git}"
+
+  echo "==> Argo CD repo-creds ${namespace}/${name} prefix=${url}"
+  kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${name}
+  namespace: ${namespace}
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+type: Opaque
+stringData:
+  type: git
+  url: ${url}
+  username: ${username}
+  password: ${token}
+EOF
+}
+
 deploy_argocd() {
   if [[ "$(hcl_bool "${ARGOCD_ENABLED:-true}")" != "true" ]]; then
     echo "skip Argo CD (ARGOCD_ENABLED=false)"
@@ -3289,6 +3301,7 @@ deploy_argocd() {
   fi
 
   helm_install_release "$(helm_stack_install_mode)" "${release}" "${namespace}" true "${helm_args[@]}"
+  apply_argocd_repo_creds "${namespace}"
 }
 
 show_argocd_summary() {

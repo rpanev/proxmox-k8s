@@ -40,8 +40,7 @@ Platform toggles (secrets.env — true/false):
   PROMETHEUS_ENABLED     Prometheus + Grafana (kube-prometheus-stack)
   LOKI_ENABLED           Loki log store + Ansible Promtail on all VMs
   ALERTMANAGER_ENABLED   Alertmanager sub-chart (default false)
-  ARGOCD_ENABLED         Argo CD Helm bootstrap
-  ARGOCD_BOOTSTRAP_ENABLED  Argo app-of-apps from gitops/apps
+  ARGOCD_ENABLED         Argo CD Helm
   SEALED_SECRETS_ENABLED Sealed Secrets controller (GitOps secrets)
   RELOADER_ENABLED       Stakater Reloader
   VELERO_ENABLED         Velero Helm (needs VELERO_S3_* MinIO credentials)

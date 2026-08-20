@@ -20,7 +20,9 @@ TRIVY_OPERATOR_ENABLED=true
 | Item | Location |
 |------|----------|
 | Helm values | `helm-homelab/trivy-operator/values.yaml` |
-| Talos overlay | `helm-homelab/trivy-operator/values-talos.yaml` (when `--os=talos`) |
+| Talos overlay | `helm-homelab/trivy-operator/values-talos.yaml` (`--os=talos`, or auto-detected from node OS image) |
+
+On Talos the overlay disables CIS node-collector jobs and drops `/etc/systemd` + `/lib/systemd` hostPath mounts (immutable root FS). Workload vulnerability scans stay on.
 
 First scans populate after workloads exist; dashboard fills once metrics scrape.
 

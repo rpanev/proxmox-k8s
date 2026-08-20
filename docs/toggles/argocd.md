@@ -1,7 +1,8 @@
 # ARGOCD_ENABLED
 
-Installs **Argo CD** (GitOps controller). Does not bootstrap apps unless
-[argocd-bootstrap.md](argocd-bootstrap.md) is also enabled.
+Installs **Argo CD** (GitOps controller). Apps are separate GitLab repos
+under the group prefix (`HomeLab-GitOps/*`); this repo only installs Argo CD
+and the group `repo-creds` token.
 
 ## Enable
 
@@ -17,11 +18,32 @@ ARGOCD_HOSTNAME=argocd
 - Parallel MagicDNS HTTPS Ingress when Tailscale is enabled
 - ServiceMonitors for Grafana dashboard **19993** (needs Prometheus)
 
+## GitLab repositories (tokens)
+
+Argo CD Applications only list a `repoURL`. Credentials are a Secret in
+namespace `argocd` labeled `argocd.argoproj.io/secret-type: repo-creds`.
+The `url` is a **prefix** — one Group Access Token covers every project
+under that group (helm-dashboard and the rest of HomeLab-GitOps).
+
+```bash
+ARGOCD_GITLAB_URL=https://gitlab.com/your-group
+ARGOCD_GITLAB_TOKEN=glpat-...
+ARGOCD_GITLAB_USERNAME=oauth2
+```
+
+Applied by `deploy_argocd()` when both URL and token are set. Public Helm
+chart repos need no token.
+
+Manual equivalent is documented in `HomeLab-GitOps/helm-dashboard/README.md`.
+
 ## Configuration
 
 | Variable | Description |
 |----------|-------------|
 | `ARGOCD_HOSTNAME` | Subdomain label |
+| `ARGOCD_GITLAB_URL` | GitLab group/repo URL prefix for repo-creds |
+| `ARGOCD_GITLAB_TOKEN` | Group Access Token (`read_repository`) or Deploy Token |
+| `ARGOCD_GITLAB_USERNAME` | `oauth2` for PAT; deploy-token username otherwise |
 | Helm values | `helm-homelab/argocd/values.yaml` |
 
 Initial admin password: standard Argo CD secret
@@ -38,5 +60,4 @@ kubectl get ingress argocd-server -n argocd
 
 ## Related
 
-- [argocd-bootstrap.md](argocd-bootstrap.md)
 - [sealed-secrets.md](sealed-secrets.md)

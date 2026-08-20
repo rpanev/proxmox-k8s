@@ -1,6 +1,8 @@
 # Example app exposed on homelab Gateway API (LAN + Cloudflare DNS).
 # For parallel VPN access, add a separate Ingress with ingressClassName: tailscale.
-# Copy to gitops/apps/myapp/ and adjust names, image, hostname.
+# Example app exposed on homelab Gateway API (LAN + Cloudflare DNS).
+# For parallel VPN access, add a separate Ingress with ingressClassName: tailscale.
+# Copy into a HomeLab-GitOps app repo and adjust names, image, hostname.
 ---
 apiVersion: v1
 kind: Namespace

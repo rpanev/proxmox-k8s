@@ -31,7 +31,6 @@ Fallback when `--os` is omitted: `TALOS_ENABLED`.
 | `ALERTMANAGER_ENABLED` | [toggles/alertmanager.md](toggles/alertmanager.md) |
 | `LOKI_ENABLED` | [toggles/loki.md](toggles/loki.md) |
 | `ARGOCD_ENABLED` | [toggles/argocd.md](toggles/argocd.md) |
-| `ARGOCD_BOOTSTRAP_ENABLED` | [toggles/argocd-bootstrap.md](toggles/argocd-bootstrap.md) |
 | `SEALED_SECRETS_ENABLED` | [toggles/sealed-secrets.md](toggles/sealed-secrets.md) |
 | `RELOADER_ENABLED` | [toggles/reloader.md](toggles/reloader.md) |
 | `VELERO_ENABLED` | [toggles/velero.md](toggles/velero.md) |

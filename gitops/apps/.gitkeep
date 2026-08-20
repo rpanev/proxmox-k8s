@@ -1,2 +1,0 @@
-# Drop Argo CD Application manifests here (one YAML per app or per folder).
-# The root Application in gitops/bootstrap syncs this directory recursively.
